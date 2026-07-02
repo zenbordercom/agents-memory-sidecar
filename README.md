@@ -53,6 +53,12 @@ npm run build
 Install globally from the GitHub release tag:
 
 ```bash
+npm install -g agents-memory-sidecar
+```
+
+Or install from the GitHub release tag:
+
+```bash
 npm install -g github:zenbordercom/agents-memory-sidecar#v0.1.0
 ```
 
