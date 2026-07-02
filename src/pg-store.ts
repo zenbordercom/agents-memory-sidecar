@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { Actor, MemoryItem, ProjectContext, SourceType } from "./types.js";
-import type { MemoryStore } from "./store.js";
+import type { MemorySearchInput, MemoryStore, SearchMode } from "./store.js";
 
 export class PgStore implements MemoryStore {
   constructor(private readonly pool: Pool) {}
@@ -10,14 +10,25 @@ export class PgStore implements MemoryStore {
     await this.pool.end();
   }
 
-  async memorySearch(input: {
-    tenant: string;
-    project: string;
-    query: string;
-    namespace?: string;
-    kind?: string;
-    limit: number;
-  }) {
+  async memorySearch(input: MemorySearchInput) {
+    const mode = searchMode(input.mode);
+    if (mode !== "keyword") {
+      const embedding = input.query_embedding ?? await queryEmbedding(input.query);
+      const model = input.embedding_model ?? process.env.AGENT_MEMORY_EMBEDDING_MODEL;
+      if (embedding?.length && model) {
+        return mode === "semantic"
+          ? this.semanticSearch(input, model, embedding)
+          : this.hybridSearch(input, model, embedding);
+      }
+      if (input.mode === "semantic") {
+        throw new Error("semantic search requires embedding_model and query_embedding or AGENT_MEMORY_EMBEDDING_MODEL");
+      }
+    }
+
+    return this.keywordSearch(input);
+  }
+
+  private async keywordSearch(input: MemorySearchInput) {
     const params: unknown[] = [input.tenant, input.project, input.query, input.limit];
     const filters = [
       "tenant = $1",
@@ -60,6 +71,131 @@ export class PgStore implements MemoryStore {
       ...row,
       created_at: toIso(row.created_at),
       confidence: row.confidence === null ? undefined : Number(row.confidence),
+      search_mode: "keyword",
+    }));
+  }
+
+  private async semanticSearch(input: MemorySearchInput, model: string, embedding: number[]) {
+    const params: unknown[] = [
+      input.tenant,
+      input.project,
+      input.query,
+      input.limit,
+      model,
+      vectorLiteral(embedding),
+    ];
+    const filters = [
+      "mi.tenant = $1",
+      "mi.project = $2",
+      "mi.deleted_at IS NULL",
+      "(mi.expires_at IS NULL OR mi.expires_at > now())",
+      "me.embedding_model = $5",
+      "vector_dims(me.embedding) = vector_dims($6::vector)",
+    ];
+    let next = 7;
+
+    if (input.namespace) {
+      filters.push(`mi.namespace = $${next++}`);
+      params.push(input.namespace);
+    }
+
+    if (input.kind) {
+      filters.push(`mi.kind = $${next++}`);
+      params.push(input.kind);
+    }
+
+    const result = await this.pool.query(
+      `
+      SELECT
+        mi.id, mi.title, mi.summary,
+        ts_headline('simple', mi.body, plainto_tsquery('simple', $3), 'MaxWords=40, MinWords=12') AS body_excerpt,
+        mi.kind, mi.project, mi.namespace, mi.source_type, mi.source_ref, mi.confidence, mi.created_at,
+        1 - (me.embedding <=> $6::vector) AS semantic_score
+      FROM memory_items mi
+      JOIN memory_embeddings me ON me.memory_id = mi.id
+      WHERE ${filters.join(" AND ")}
+      ORDER BY me.embedding <=> $6::vector ASC, mi.created_at DESC
+      LIMIT $4
+      `,
+      params,
+    );
+
+    return result.rows.map((row) => ({
+      ...row,
+      created_at: toIso(row.created_at),
+      confidence: row.confidence === null ? undefined : Number(row.confidence),
+      semantic_score: row.semantic_score === null ? undefined : Number(row.semantic_score),
+      search_mode: "semantic",
+      embedding_model: model,
+    }));
+  }
+
+  private async hybridSearch(input: MemorySearchInput, model: string, embedding: number[]) {
+    const params: unknown[] = [
+      input.tenant,
+      input.project,
+      input.query,
+      input.limit,
+      model,
+      vectorLiteral(embedding),
+    ];
+    const filters = [
+      "mi.tenant = $1",
+      "mi.project = $2",
+      "mi.deleted_at IS NULL",
+      "(mi.expires_at IS NULL OR mi.expires_at > now())",
+    ];
+    let next = 7;
+
+    if (input.namespace) {
+      filters.push(`mi.namespace = $${next++}`);
+      params.push(input.namespace);
+    }
+
+    if (input.kind) {
+      filters.push(`mi.kind = $${next++}`);
+      params.push(input.kind);
+    }
+
+    const result = await this.pool.query(
+      `
+      WITH ranked AS (
+        SELECT
+          mi.id, mi.title, mi.summary,
+          ts_headline('simple', mi.body, plainto_tsquery('simple', $3), 'MaxWords=40, MinWords=12') AS body_excerpt,
+          mi.kind, mi.project, mi.namespace, mi.source_type, mi.source_ref, mi.confidence, mi.created_at,
+          ts_rank(
+            to_tsvector('simple', coalesce(mi.title, '') || ' ' || mi.body || ' ' || coalesce(mi.summary, '')),
+            plainto_tsquery('simple', $3)
+          ) AS keyword_score,
+          CASE
+            WHEN me.embedding IS NULL THEN NULL
+            ELSE 1 - (me.embedding <=> $6::vector)
+          END AS semantic_score
+        FROM memory_items mi
+        LEFT JOIN memory_embeddings me
+          ON me.memory_id = mi.id
+         AND me.embedding_model = $5
+         AND vector_dims(me.embedding) = vector_dims($6::vector)
+        WHERE ${filters.join(" AND ")}
+      )
+      SELECT *
+      FROM ranked
+      WHERE keyword_score > 0 OR semantic_score IS NOT NULL
+      ORDER BY (keyword_score + (0.7 * greatest(coalesce(semantic_score, 0), 0))) DESC, created_at DESC
+      LIMIT $4
+      `,
+      params,
+    );
+
+    return result.rows.map((row) => ({
+      ...row,
+      created_at: toIso(row.created_at),
+      confidence: row.confidence === null ? undefined : Number(row.confidence),
+      keyword_score: row.keyword_score === null ? undefined : Number(row.keyword_score),
+      semantic_score: row.semantic_score === null ? undefined : Number(row.semantic_score),
+      search_mode: "hybrid",
+      embedding_model: model,
     }));
   }
 
@@ -335,4 +471,49 @@ function toIso(value: Date | string): string {
 function toOptionalIso(value: Date | string | null): string | undefined {
   if (!value) return undefined;
   return toIso(value);
+}
+
+function searchMode(mode?: SearchMode): SearchMode {
+  const configured = mode ?? process.env.AGENT_MEMORY_SEARCH_MODE ?? "keyword";
+  if (configured === "keyword" || configured === "semantic" || configured === "hybrid") {
+    return configured;
+  }
+  throw new Error(`Invalid search mode: ${configured}`);
+}
+
+function vectorLiteral(values: number[]): string {
+  if (!values.length || !values.every((value) => Number.isFinite(value))) {
+    throw new Error("query_embedding must contain at least one finite number");
+  }
+  return `[${values.join(",")}]`;
+}
+
+async function queryEmbedding(query: string): Promise<number[] | undefined> {
+  const model = process.env.AGENT_MEMORY_EMBEDDING_MODEL;
+  if (!model) return undefined;
+
+  const baseUrl = (process.env.AGENT_MEMORY_EMBEDDING_OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
+  const timeoutMs = Number(process.env.AGENT_MEMORY_EMBEDDING_TIMEOUT_MS ?? "30000");
+  const response = await fetch(`${baseUrl}/api/embed`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(timeoutMs),
+    body: JSON.stringify({
+      model,
+      input: [query],
+      truncate: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Ollama /api/embed failed: HTTP ${response.status} ${text.slice(0, 300)}`);
+  }
+
+  const json = await response.json();
+  const embedding = json.embeddings?.[0];
+  if (!Array.isArray(embedding)) {
+    throw new Error("Ollama response did not include embeddings[0]");
+  }
+  return embedding;
 }

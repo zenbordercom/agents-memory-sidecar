@@ -12,14 +12,7 @@ import type {
 } from "./types.js";
 
 export type MemoryStore = {
-  memorySearch(input: {
-    tenant: string;
-    project: string;
-    query: string;
-    namespace?: string;
-    kind?: string;
-    limit: number;
-  }): Promise<unknown[]>;
+  memorySearch(input: MemorySearchInput): Promise<unknown[]>;
   memoryGet(input: { tenant: string; project: string; id: string }): Promise<MemoryItem | undefined>;
   memoryAdd(actor: Actor, input: {
     tenant: string;
@@ -64,6 +57,20 @@ export type MemoryStore = {
   close?(): Promise<void>;
 };
 
+export type SearchMode = "keyword" | "semantic" | "hybrid";
+
+export type MemorySearchInput = {
+  tenant: string;
+  project: string;
+  query: string;
+  namespace?: string;
+  kind?: string;
+  limit: number;
+  mode?: SearchMode;
+  embedding_model?: string;
+  query_embedding?: number[];
+};
+
 const emptyData: FakeStoreData = {
   memory_items: [],
   project_contexts: [],
@@ -83,14 +90,7 @@ export class FakeStore implements MemoryStore {
     );
   }
 
-  async memorySearch(input: {
-    tenant: string;
-    project: string;
-    query: string;
-    namespace?: string;
-    kind?: string;
-    limit: number;
-  }) {
+  async memorySearch(input: MemorySearchInput) {
     await this.load();
     const query = input.query.trim().toLowerCase();
     const now = Date.now();

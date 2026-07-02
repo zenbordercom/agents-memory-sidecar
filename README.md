@@ -17,7 +17,7 @@ The HTTP server is intended to listen on `127.0.0.1` only. Do not expose it dire
 - Short-lived agent observations with TTL
 - HTTP sidecar with bearer-token authentication
 - Actor identity derived from token registry, not model-provided fields
-- PostgreSQL persistence with pgvector installed for future semantic search
+- PostgreSQL persistence with pgvector-backed semantic and hybrid search
 - Secret rejection for common token/private-key patterns
 - Audit events for writes, permission denials, unauthorized calls, and pruning
 - Fake JSON store for local development and smoke tests
@@ -30,6 +30,10 @@ The HTTP server is intended to listen on `127.0.0.1` only. Do not expose it dire
 - `memory_add`
 - `agent_observation_add`
 - `project_context_set` (admin-only)
+
+## Search Modes
+
+Search defaults to keyword/full-text mode. PostgreSQL deployments can enable `semantic` or `hybrid` mode after backfilling `memory_embeddings`; see [Configuration](docs/configuration.md).
 
 ## Quick Start
 
@@ -59,13 +63,13 @@ npm install -g agents-memory-sidecar
 Or install from the GitHub release tag:
 
 ```bash
-npm install -g github:zenbordercom/agents-memory-sidecar#v0.1.0
+npm install -g github:zenbordercom/agents-memory-sidecar#v0.1.1
 ```
 
 Or install the release tarball:
 
 ```bash
-npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.1.0/agents-memory-sidecar-0.1.0.tgz
+npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.1.1/agents-memory-sidecar-0.1.1.tgz
 ```
 
 The CLI entry points are:
@@ -147,7 +151,7 @@ See [Operations](docs/operations.md) and [Backup And Restore](docs/backup-restor
 
 ## Limitations
 
-- V1 search is keyword/full-text search. Semantic ranking is not enabled by default.
+- Search defaults to keyword/full-text mode. Semantic and hybrid search require stored embeddings and an embedding model or explicit query embedding.
 - The project does not replace an agent's internal conversation memory.
 - The sidecar is local-first and not designed as a public multi-tenant SaaS API.
 - Fresh install automation is intentionally minimal in this version.

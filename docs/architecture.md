@@ -26,7 +26,7 @@ The store can be:
 - `project_contexts`: structured project facts
 - `agent_observations`: short-lived process notes
 - `audit_events`: write and authorization audit trail
-- `memory_embeddings`: reserved for semantic search
+- `memory_embeddings`: pgvector embeddings used by semantic and hybrid search
 - `schema_migrations`: migration tracking
 
 ## Request Flow

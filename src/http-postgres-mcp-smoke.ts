@@ -18,7 +18,7 @@ function parseToolJson(result: unknown): any {
 }
 
 async function main() {
-  const client = new Client({ name: "http-postgres-mcp-smoke", version: "0.1.0" });
+  const client = new Client({ name: "http-postgres-mcp-smoke", version: "0.1.1" });
   const transport = new StdioClientTransport({
     command: "/usr/local/bin/node",
     args: [wrapperPath],

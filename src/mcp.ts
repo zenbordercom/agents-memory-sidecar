@@ -11,11 +11,12 @@ const project = z.string().min(1);
 const namespace = z.string().min(1).default("ops");
 const sourceType = z.enum(["user", "agent", "file", "command", "url", "system", "manual", "import"]);
 const metadata = z.record(z.string(), z.unknown()).default({});
+const searchMode = z.enum(["keyword", "semantic", "hybrid"]);
 
 export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServer {
   const server = new McpServer({
     name: "agents-memory-sidecar",
-    version: "0.1.0",
+    version: "0.1.1",
   });
 
   server.registerTool(
@@ -30,6 +31,9 @@ export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServ
         kind: z.string().min(1).optional(),
         query: z.string().min(1),
         limit: z.number().int().min(1).max(20).default(5),
+        mode: searchMode.optional(),
+        embedding_model: z.string().min(1).optional(),
+        query_embedding: z.array(z.number()).min(1).optional(),
       },
     },
     async (input) => {

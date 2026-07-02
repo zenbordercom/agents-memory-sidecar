@@ -7,6 +7,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: agents_memory
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agents_memory"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,3 +33,15 @@ jobs:
       - run: npm run smoke
       - run: npm run http:smoke
       - run: npm run http:bridge-smoke
+      - run: npm run db:migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGDATABASE: agents_memory
+          PGUSER: postgres
+          PGPASSWORD: postgres
+      - run: npm run postgres:smoke
+        env:
+          PGHOST: 127.0.0.1
+          PGDATABASE: agents_memory
+          PGUSER: postgres
+          PGPASSWORD: postgres

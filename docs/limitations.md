@@ -1,6 +1,6 @@
 # Limitations
 
-- Search is keyword/full-text search in V1. Semantic search is not enabled by default.
+- Search defaults to keyword/full-text mode. Semantic and hybrid search require stored embeddings and an embedding model or explicit query embedding.
 - The sidecar is designed for local agents, not public internet exposure.
 - Fresh install automation is intentionally minimal.
 - Secret scanning is a safety net, not complete DLP.

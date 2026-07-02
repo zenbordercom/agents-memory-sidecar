@@ -29,7 +29,7 @@ async function main() {
   };
 
   const server = createMemoryMcpServer(actor, new FakeStore(storePath));
-  const client = new Client({ name: "agents-memory-smoke", version: "0.1.0" });
+  const client = new Client({ name: "agents-memory-smoke", version: "0.1.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);

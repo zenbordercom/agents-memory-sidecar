@@ -1,6 +1,6 @@
 {
   "name": "agents-memory-sidecar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first shared memory sidecar for MCP-capable AI agents.",
   "main": "dist/server.js",
   "bin": {
@@ -21,6 +21,7 @@
     "http:smoke": "tsx src/http-smoke.ts",
     "http:bridge-smoke": "tsx src/http-bridge-smoke.ts",
     "http:postgres-mcp-smoke": "tsx src/http-postgres-mcp-smoke.ts",
+    "postgres:smoke": "tsx src/postgres-smoke.ts",
     "smoke": "tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",

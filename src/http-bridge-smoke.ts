@@ -62,7 +62,7 @@ async function main() {
   const baseUrl = listenUrl(httpServer);
 
   const mcpServer = createMemoryMcpServer(writer, new HttpStore(baseUrl));
-  const client = new Client({ name: "http-bridge-smoke", version: "0.1.0" });
+  const client = new Client({ name: "http-bridge-smoke", version: "0.1.1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
   try {

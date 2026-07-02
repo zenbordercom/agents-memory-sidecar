@@ -30,6 +30,9 @@ async function main() {
           namespace: optionalString(input.namespace),
           kind: optionalString(input.kind),
           limit: numberOrDefault(input.limit, 5, 1, 20),
+          mode: searchMode(input.mode),
+          embedding_model: optionalString(input.embedding_model),
+          query_embedding: arrayOfNumbers(input.query_embedding),
         }),
       });
       }
@@ -194,6 +197,18 @@ function arrayOfStrings(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
     ? value
     : undefined;
+}
+
+function arrayOfNumbers(value: unknown): number[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "number")
+    ? value
+    : undefined;
+}
+
+function searchMode(value: unknown): "keyword" | "semantic" | "hybrid" | undefined {
+  if (value === undefined) return undefined;
+  if (value === "keyword" || value === "semantic" || value === "hybrid") return value;
+  throw new Error("Invalid search mode");
 }
 
 function objectOrDefault(value: unknown): Record<string, unknown> {

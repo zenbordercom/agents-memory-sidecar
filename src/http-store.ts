@@ -1,5 +1,5 @@
 import type { Actor, SourceType } from "./types.js";
-import type { MemoryStore } from "./store.js";
+import type { MemorySearchInput, MemoryStore } from "./store.js";
 
 export class HttpStore implements MemoryStore {
   constructor(
@@ -7,14 +7,7 @@ export class HttpStore implements MemoryStore {
     private readonly bearerToken = process.env.AGENT_MEMORY_HTTP_BEARER_TOKEN,
   ) {}
 
-  async memorySearch(input: {
-    tenant: string;
-    project: string;
-    query: string;
-    namespace?: string;
-    kind?: string;
-    limit: number;
-  }) {
+  async memorySearch(input: MemorySearchInput) {
     const result = await this.request("POST", "/v1/memory/search", input);
     return result.items;
   }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 - 2026-07-02
+
+- Added PostgreSQL + pgvector CI coverage.
+- Added `postgres:smoke` validation for migrations, keyword search, semantic search, and hybrid search.
+- Added pgvector-backed semantic and hybrid search modes for PostgreSQL.
+- Documented npm registry installation in the published README.
+
 ## 0.1.0 - 2026-07-02
 
 Initial public release.
