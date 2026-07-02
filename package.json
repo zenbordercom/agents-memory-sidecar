@@ -1,10 +1,12 @@
 {
   "name": "agents-memory-sidecar",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Local-first shared memory sidecar for MCP-capable AI agents.",
   "main": "dist/server.js",
   "bin": {
-    "agents-memory": "dist/cli.js"
+    "agents-memory": "dist/cli.js",
+    "agents-memory-mcp": "dist/server.js",
+    "agents-memory-http": "dist/http-server.js"
   },
   "directories": {
     "doc": "docs"
@@ -21,7 +23,9 @@
     "http:postgres-mcp-smoke": "tsx src/http-postgres-mcp-smoke.ts",
     "smoke": "tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "prepack": "npm run build",
+    "prepare": "npm run build"
   },
   "keywords": [
     "mcp",
@@ -32,6 +36,28 @@
   ],
   "author": "",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenbordercom/agents-memory-sidecar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zenbordercom/agents-memory-sidecar/issues"
+  },
+  "homepage": "https://github.com/zenbordercom/agents-memory-sidecar#readme",
+  "files": [
+    "dist/",
+    "migrations/",
+    "docs/",
+    "config/*.example*",
+    "integrations/",
+    "scripts/",
+    "systemd/",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md"
+  ],
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

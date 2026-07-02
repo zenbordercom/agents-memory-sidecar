@@ -6,7 +6,7 @@ Type=oneshot
 User=agents-memory
 Group=agents-memory
 Environment=AGENT_MEMORY_FAILURE_LOG=/var/log/agents-memory/health-check-failures.jsonl
-ExecStart=/usr/local/bin/node /opt/agents-memory-sidecar/scripts/record-health-check-failure.mjs --source agents-memory-health-check.service
+ExecStart=/usr/bin/env node /opt/agents-memory-sidecar/scripts/record-health-check-failure.mjs --source agents-memory-health-check.service
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

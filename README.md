@@ -41,6 +41,35 @@ npm run http:smoke
 npm run http:bridge-smoke
 ```
 
+Install from GitHub:
+
+```bash
+git clone https://github.com/zenbordercom/agents-memory-sidecar.git
+cd agents-memory-sidecar
+npm install
+npm run build
+```
+
+Install globally from the GitHub release tag:
+
+```bash
+npm install -g github:zenbordercom/agents-memory-sidecar#v0.1.0
+```
+
+Or install the release tarball:
+
+```bash
+npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.1.0/agents-memory-sidecar-0.1.0.tgz
+```
+
+The CLI entry points are:
+
+```bash
+agents-memory --help
+agents-memory-mcp
+agents-memory-http
+```
+
 Run the stdio MCP wrapper with the fake store:
 
 ```bash
@@ -102,7 +131,11 @@ See [Security Model](docs/security-model.md).
 
 ## Production Operations
 
-Optional scripts and systemd unit examples are included for local Linux deployments. They are templates, not a universal installer. Review paths, users, groups, database roles, and backup passphrase handling before use.
+Optional scripts and systemd unit examples are included for local Linux deployments. Review paths, users, groups, database roles, and backup passphrase handling before use.
+
+```bash
+sudo scripts/install-local.sh
+```
 
 See [Operations](docs/operations.md) and [Backup And Restore](docs/backup-restore.md).
 
