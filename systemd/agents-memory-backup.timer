@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily encrypted Agent Memory PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 UTC
+Persistent=true
+Unit=agents-memory-backup.service
+
+[Install]
+WantedBy=timers.target

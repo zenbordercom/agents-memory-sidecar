@@ -1,0 +1,5 @@
+{
+  "name": "agent-memory",
+  "version": "0.1.0",
+  "description": "Shared memory MCP sidecar for agy."
+}

@@ -1,0 +1,9 @@
+{
+  "replace-with-random-token": {
+    "tenant": "default",
+    "agentId": "codex-cli",
+    "runtime": "codex",
+    "role": "writer",
+    "projects": ["*"]
+  }
+}

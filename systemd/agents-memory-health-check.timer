@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Agent Memory health check every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 00/6:07:00
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

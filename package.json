@@ -1,0 +1,47 @@
+{
+  "name": "agents-memory-sidecar",
+  "version": "1.0.0",
+  "description": "Local-first shared memory sidecar for MCP-capable AI agents.",
+  "main": "dist/server.js",
+  "bin": {
+    "agents-memory": "dist/cli.js"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "cli": "tsx src/cli.ts",
+    "dev": "tsx src/server.ts",
+    "http:dev": "tsx src/http-server.ts",
+    "seed:demo": "tsx src/seed.ts",
+    "db:migrate": "tsx src/migrate.ts",
+    "http:smoke": "tsx src/http-smoke.ts",
+    "http:bridge-smoke": "tsx src/http-bridge-smoke.ts",
+    "http:postgres-mcp-smoke": "tsx src/http-postgres-mcp-smoke.ts",
+    "smoke": "tsx src/smoke.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "keywords": [
+    "mcp",
+    "agents",
+    "memory",
+    "sidecar",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "pg": "^8.21.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.3"
+  }
+}

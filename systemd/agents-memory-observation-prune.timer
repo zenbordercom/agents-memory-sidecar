@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily expired Agent Memory observation prune
+
+[Timer]
+OnCalendar=*-*-* 03:47:00 UTC
+Persistent=true
+Unit=agents-memory-observation-prune.service
+
+[Install]
+WantedBy=timers.target

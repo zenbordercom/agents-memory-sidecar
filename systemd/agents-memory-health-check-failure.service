@@ -1,0 +1,17 @@
+[Unit]
+Description=Record Agent Memory health check failure
+
+[Service]
+Type=oneshot
+User=agents-memory
+Group=agents-memory
+Environment=AGENT_MEMORY_FAILURE_LOG=/var/log/agents-memory/health-check-failures.jsonl
+ExecStart=/usr/local/bin/node /opt/agents-memory-sidecar/scripts/record-health-check-failure.mjs --source agents-memory-health-check.service
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/agents-memory-sidecar
+ReadWritePaths=/var/log/agents-memory
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=

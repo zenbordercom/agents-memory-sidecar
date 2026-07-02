@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "agent-memory": {
+      "command": "~/.config/agents-memory/launchers/agy.sh"
+    }
+  }
+}

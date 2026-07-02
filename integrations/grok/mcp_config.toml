@@ -1,0 +1,10 @@
+# Reference config for Grok CLI. Active config can be written by:
+#   grok mcp add agent-memory -- ~/.config/agents-memory/launchers/grok.sh
+#
+# Secrets should live in a private env file, not in config.toml.
+
+[mcp_servers.agent-memory]
+command = "~/.config/agents-memory/launchers/grok.sh"
+enabled = true
+startup_timeout_sec = 10
+tool_timeout_sec = 120

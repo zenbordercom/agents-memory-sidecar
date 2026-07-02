@@ -1,0 +1,25 @@
+[Unit]
+Description=Agent Memory HTTP Sidecar
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=agents-memory
+Group=agents-memory
+WorkingDirectory=/opt/agents-memory-sidecar
+EnvironmentFile=/etc/agents-memory/sidecar.env
+ExecStart=/usr/local/bin/node /opt/agents-memory-sidecar/dist/http-server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
