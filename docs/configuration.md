@@ -20,11 +20,16 @@ AGENT_MEMORY_STORE_PATH=data/fake-store.json
 
 ```bash
 AGENT_MEMORY_BACKEND=postgres
-PGHOST=/var/run/postgresql
+PGHOST=127.0.0.1
+PGPORT=5432
 PGDATABASE=agents_memory
 PGUSER=agents_memory_app
 PGPASSWORD=change-me
 ```
+
+Use TCP localhost for password-based local deployments. If you prefer Unix
+sockets, configure PostgreSQL `pg_hba.conf` for the runtime user and omit
+`PGPASSWORD` when using peer authentication.
 
 ## HTTP Sidecar
 

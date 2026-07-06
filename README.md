@@ -124,11 +124,11 @@ node scripts/upsert-http-token.mjs \
 ```
 
 The token script prints a fingerprint only. For local development, load the
-generated token into your shell from the private registry file:
+matching `local-cli/local` token into your shell from the private registry file:
 
 ```bash
 export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
 )"
 ```
 
@@ -145,7 +145,7 @@ In another terminal, call it through the CLI HTTP backend:
 
 ```bash
 export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
 )"
 
 AGENT_MEMORY_BACKEND=http \
@@ -203,22 +203,24 @@ database setup.
 
 ## Installation Options
 
-Install globally from the npm registry:
+Install the current GitHub release tag:
 
 ```bash
-npm install -g agents-memory-sidecar
-```
-
-Or install from the GitHub release tag:
-
-```bash
-npm install -g github:zenbordercom/agents-memory-sidecar#v0.2.0
+npm install -g github:zenbordercom/agents-memory-sidecar#v0.2.1
 ```
 
 Or install the release tarball:
 
 ```bash
-npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.2.0/agents-memory-sidecar-0.2.0.tgz
+npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.2.1/agents-memory-sidecar-0.2.1.tgz
+```
+
+The npm registry package may lag the GitHub release. Check the registry version
+before using the unpinned npm install path:
+
+```bash
+npm view agents-memory-sidecar version  # must print 0.2.1 or newer
+npm install -g agents-memory-sidecar
 ```
 
 The CLI entry points are:

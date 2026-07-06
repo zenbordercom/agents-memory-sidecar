@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 - 2026-07-06
+
+- Clarified that GitHub release installs are the authoritative current release path unless the npm registry has been updated.
+- Fixed token-loading snippets so they select the intended actor token instead of the first registry entry.
+- Clarified PostgreSQL localhost TCP usage for password-based quickstarts on peer-auth systems.
+- Tightened Codex integration instructions for source-checkout versus global-install layouts.
+- Updated release checklist staging and optional npm publish verification guidance.
+
 ## 0.2.0 - 2026-07-06
 
 - Restructured the README quick start into demo, local HTTP sidecar, and durable PostgreSQL paths.

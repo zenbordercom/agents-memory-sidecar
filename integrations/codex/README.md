@@ -14,7 +14,7 @@ Codex MCP config.
 
 ## Prerequisites
 
-- Agents Memory Sidecar is built or installed.
+- Agents Memory Sidecar is built from a source checkout or installed globally.
 - The HTTP sidecar is running on `127.0.0.1`.
 - A bearer token exists in the HTTP token registry for a Codex actor.
 - `codex mcp add --help` shows support for stdio MCP servers.
@@ -22,9 +22,13 @@ Codex MCP config.
 For local setup, first follow the repository README or
 `docs/postgres-quickstart.md`.
 
+When using a source checkout, run the commands below from that checkout. When
+using a global install, run the token helper through `npm explore -g` as shown
+below.
+
 ## Create A Codex Token
 
-For a local development checkout, create a private token registry:
+For a source checkout, create a private token registry:
 
 ```bash
 mkdir -p "$HOME/.config/agents-memory/tokens"
@@ -38,12 +42,26 @@ node scripts/upsert-http-token.mjs \
   --projects '*'
 ```
 
-The script prints a token fingerprint only. Load the full token from the private
-registry when creating the env file:
+For a global install, use the installed package copy of the helper:
+
+```bash
+mkdir -p "$HOME/.config/agents-memory/tokens"
+mkdir -p "$HOME/.config/agents-memory/launchers"
+
+npm explore -g agents-memory-sidecar -- node scripts/upsert-http-token.mjs \
+  --file "$HOME/.config/agents-memory/http-tokens.json" \
+  --agent-id codex-cli \
+  --runtime codex \
+  --role writer \
+  --projects '*'
+```
+
+The script prints a token fingerprint only. Load the matching `codex-cli/codex`
+token from the private registry when creating the env file:
 
 ```bash
 TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));console.log(Object.keys(r)[0])" \
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='codex-cli'&&a.runtime==='codex');if(!e) throw new Error('codex-cli/codex token not found');console.log(e[0])" \
     "$HOME/.config/agents-memory/http-tokens.json"
 )"
 ```
@@ -70,7 +88,9 @@ maintenance because `project_context_set` is admin-only.
 
 ## Create The Launcher
 
-If `agents-memory-mcp` is installed globally, use it directly:
+Create a launcher. If you use a source checkout, set
+`AGENTS_MEMORY_SIDECAR_DIR` to that checkout path. If the variable is not set,
+the launcher uses the global `agents-memory-mcp` binary.
 
 ```bash
 cat > "$HOME/.config/agents-memory/launchers/codex.sh" <<'EOF'
@@ -88,17 +108,20 @@ set -a
 source "$ENV_FILE"
 set +a
 
+if [[ -n "${AGENTS_MEMORY_SIDECAR_DIR:-}" ]]; then
+  exec node "$AGENTS_MEMORY_SIDECAR_DIR/dist/server.js"
+fi
+
 exec agents-memory-mcp
 EOF
 
 chmod 700 "$HOME/.config/agents-memory/launchers/codex.sh"
 ```
 
-If you deploy the repository to `/opt/agents-memory-sidecar`, replace the final
-line with:
+For a source checkout, add the checkout path to `codex.env`:
 
 ```bash
-exec node /opt/agents-memory-sidecar/dist/server.js
+echo "AGENTS_MEMORY_SIDECAR_DIR=/absolute/path/to/agents-memory-sidecar" >> "$HOME/.config/agents-memory/tokens/codex.env"
 ```
 
 ## Register With Codex
@@ -116,7 +139,9 @@ codex mcp get agent-memory
 
 ## Validate The Sidecar Before Using Codex
 
-Source the same env file and call the HTTP sidecar through the CLI backend:
+Source the same env file and call the HTTP sidecar through the CLI backend.
+Use `agents-memory` if the package is installed globally, or `node dist/cli.js`
+from a source checkout:
 
 ```bash
 set -a
@@ -124,6 +149,17 @@ source "$HOME/.config/agents-memory/tokens/codex.env"
 set +a
 
 agents-memory memory_search '{
+  "tenant":"default",
+  "project":"demo-app",
+  "query":"deployment",
+  "limit":5
+}'
+```
+
+Source checkout equivalent:
+
+```bash
+node dist/cli.js memory_search '{
   "tenant":"default",
   "project":"demo-app",
   "query":"deployment",

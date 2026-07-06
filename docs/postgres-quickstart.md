@@ -78,12 +78,16 @@ SQL
 Set the application connection environment:
 
 ```bash
-export PGHOST=/var/run/postgresql
+export PGHOST=127.0.0.1
+export PGPORT=5432
 export PGDATABASE=agents_memory
 export PGUSER=agents_memory_app
 export PGPASSWORD=change-me
 export AGENT_MEMORY_BACKEND=postgres
 ```
+
+This password-based quickstart uses TCP localhost to avoid Unix-socket peer auth
+surprises on common Debian/Ubuntu PostgreSQL defaults.
 
 For production, store these values outside the repository, for example in
 `/etc/agents-memory/sidecar.env` with restricted file permissions.
@@ -118,11 +122,12 @@ node scripts/upsert-http-token.mjs \
   --projects '*'
 ```
 
-Load the generated token into the current shell from the private registry file:
+Load the matching `local-cli/local` token into the current shell from the private
+registry file:
 
 ```bash
 export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
 )"
 ```
 
@@ -176,7 +181,7 @@ Set the HTTP client environment in the second terminal:
 
 ```bash
 export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
 )"
 export AGENT_MEMORY_BACKEND=http
 export AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790

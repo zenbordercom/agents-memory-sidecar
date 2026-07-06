@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist for tagged releases such as `v0.2.0`.
+Use this checklist for tagged releases. Replace `0.2.1` with the target version.
 
 ## Related Docs
 
@@ -89,16 +89,16 @@ npm pack
 If the version still needs to be updated:
 
 ```bash
-npm version 0.2.0 --no-git-tag-version
+npm version 0.2.1 --no-git-tag-version
 ```
 
 After final validation:
 
 ```bash
 git status --short
-git add package.json package-lock.json CHANGELOG.md README.md docs integrations scripts systemd config migrations src
-git commit -m "Prepare v0.2.0 release"
-git tag v0.2.0
+git add -A
+git commit -m "Prepare v0.2.1 release"
+git tag -a v0.2.1 -m "v0.2.1"
 ```
 
 ## GitHub Release
@@ -106,9 +106,12 @@ git tag v0.2.0
 - Push the branch and tag.
 - Confirm CI passes on the tag.
 - Create a GitHub release for the tag.
-- Attach the `agents-memory-sidecar-0.2.0.tgz` artifact if publishing release
+- Attach the `agents-memory-sidecar-0.2.1.tgz` artifact if publishing release
   tarballs through GitHub.
 - Confirm the README install commands reference the released version.
+- If publishing to the npm registry, run `npm publish` only after the GitHub
+  release is verified, then confirm `npm view agents-memory-sidecar version`
+  reports the target version.
 
 ## Post-Release Smoke
 

@@ -138,7 +138,8 @@ node dist/cli.js memory_search '{
 ```
 
 You can also pass mode and embedding data per request. This is useful for tests
-or clients that generate query embeddings themselves:
+or clients that generate query embeddings themselves. The `query_embedding`
+dimension must match stored rows for the selected `embedding_model`.
 
 ```bash
 node dist/cli.js memory_search '{
@@ -147,7 +148,7 @@ node dist/cli.js memory_search '{
   "query":"deployment convention",
   "limit":5,
   "mode":"hybrid",
-  "embedding_model":"nomic-embed-text",
+  "embedding_model":"example-3d-model",
   "query_embedding":[0.1,0.2,0.3]
 }'
 ```

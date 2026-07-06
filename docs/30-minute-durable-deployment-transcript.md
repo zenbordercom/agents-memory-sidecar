@@ -35,12 +35,16 @@ SQL
 Set the connection environment:
 
 ```bash
-export PGHOST=/var/run/postgresql
+export PGHOST=127.0.0.1
+export PGPORT=5432
 export PGDATABASE=agents_memory
 export PGUSER=agents_memory_app
 export PGPASSWORD=change-me
 export AGENT_MEMORY_BACKEND=postgres
 ```
+
+This password-based transcript uses TCP localhost to avoid Unix-socket peer auth
+surprises on common Debian/Ubuntu PostgreSQL defaults.
 
 ## Run Migrations And PostgreSQL Smoke
 
@@ -88,7 +92,7 @@ Load the generated token into the current shell:
 
 ```bash
 export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
 )"
 ```
 
