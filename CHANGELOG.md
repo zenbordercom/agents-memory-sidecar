@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-07-06
+
+- Restructured the README quick start into demo, local HTTP sidecar, and durable PostgreSQL paths.
+- Added quickstart diagnostics to `scripts/check-installation.mjs`.
+- Added PostgreSQL quickstart, semantic/hybrid search, and release checklist documentation.
+- Expanded the Codex integration guide with token env, launcher, MCP registration, validation flows, and troubleshooting.
+- Documented local development token handling and ignored `.local/` development state.
+
 ## 0.1.1 - 2026-07-02
 
 - Added PostgreSQL + pgvector CI coverage.

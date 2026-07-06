@@ -13,6 +13,11 @@ const runtimeDir = args["runtime-dir"] ?? "/opt/agents-memory-sidecar";
 const backupDir = args["backup-dir"] ?? "/var/backups/agents-memory";
 const healthUrl = args["health-url"] ?? "http://127.0.0.1:18790/healthz";
 const pretty = args.pretty === "true";
+const profile = args.profile ?? "production";
+
+if (!["production", "quickstart"].includes(profile)) {
+  throw new Error("Invalid --profile: expected production or quickstart");
+}
 
 loadEnvFile(envFile);
 
@@ -20,6 +25,44 @@ const checks = [];
 await main();
 
 async function main() {
+  if (profile === "quickstart") {
+    await checkQuickstart();
+  } else {
+    await checkProduction();
+  }
+
+  const status = checks.some((check) => check.status === "fail") ? "fail" : checks.some((check) => check.status === "warn") ? "warn" : "ok";
+  console.log(JSON.stringify({ status, profile, generated_at: new Date().toISOString(), checks }, null, pretty ? 2 : 0));
+  if (status === "fail") process.exitCode = 1;
+}
+
+async function checkQuickstart() {
+  checkPath("source:checkout", sourceDir, { required: true });
+  checkPath("source:package_json", join(sourceDir, "package.json"), { required: true, readable: true });
+  checkPath("source:readme", join(sourceDir, "README.md"), { required: true, readable: true });
+  checkPath("build:cli", join(sourceDir, "dist/cli.js"), { required: true, readable: true });
+  checkPath("build:mcp_wrapper", join(sourceDir, "dist/server.js"), { required: true, readable: true });
+  checkPath("build:http_server", join(sourceDir, "dist/http-server.js"), { required: true, readable: true });
+  checkPath("config:agent_token_example", join(sourceDir, "config/agent-token.env.example"), { required: true, readable: true });
+  checkPath("config:launcher_example", join(sourceDir, "config/agents-memory-launcher.sh.example"), { required: true, readable: true });
+  checkPath("config:http_tokens_example", join(sourceDir, "config/http-tokens.example.json"), { required: true, readable: true });
+  checkPackageMetadata();
+
+  if (args["check-token-file"] === "true" || args["token-file"]) {
+    checkPath("config:token_registry", tokenFile, { required: true, readable: true });
+    checkTokenRegistry();
+  }
+
+  if (args["check-http"] === "true") {
+    await checkHttp({ expectedBackend: args["expected-backend"] });
+  }
+
+  if (args["check-postgres"] === "true") {
+    await checkPostgres();
+  }
+}
+
+async function checkProduction() {
   checkPath("source:checkout", sourceDir, { required: true });
   checkPath("runtime:copy", runtimeDir, { required: true });
   checkPath("runtime:mcp_wrapper", join(runtimeDir, "dist/server.js"), { required: true, readable: true });
@@ -38,10 +81,6 @@ async function main() {
   await checkPostgres();
   checkTokenRegistry();
   checkLatestBackup();
-
-  const status = checks.some((check) => check.status === "fail") ? "fail" : checks.some((check) => check.status === "warn") ? "warn" : "ok";
-  console.log(JSON.stringify({ status, generated_at: new Date().toISOString(), checks }, null, pretty ? 2 : 0));
-  if (status === "fail") process.exitCode = 1;
 }
 
 function checkPath(name, path, options = {}) {
@@ -72,18 +111,41 @@ function checkSystemd(unit, kind) {
   }
 }
 
-async function checkHttp() {
+async function checkHttp(options = {}) {
   try {
     const response = await fetch(healthUrl);
     const payload = await response.json();
+    const expectedBackend = options.expectedBackend ?? "postgres";
+    const backendOk = expectedBackend ? payload?.backend === expectedBackend : true;
     checks.push({
       name: "http:healthz",
-      status: response.ok && payload?.ok === true && payload?.backend === "postgres" ? "ok" : "fail",
+      status: response.ok && payload?.ok === true && backendOk ? "ok" : "fail",
       http_status: response.status,
       backend: payload?.backend,
+      expected_backend: expectedBackend,
     });
   } catch (error) {
     checks.push({ name: "http:healthz", status: "fail", error: formatError(error) });
+  }
+}
+
+function checkPackageMetadata() {
+  try {
+    const packageJson = JSON.parse(readFileSync(join(sourceDir, "package.json"), "utf8"));
+    const expectedBins = ["agents-memory", "agents-memory-mcp", "agents-memory-http"];
+    const expectedScripts = ["build", "smoke", "http:smoke", "http:bridge-smoke", "postgres:smoke"];
+    const missingBins = expectedBins.filter((name) => !packageJson.bin?.[name]);
+    const missingScripts = expectedScripts.filter((name) => !packageJson.scripts?.[name]);
+    checks.push({
+      name: "package:metadata",
+      status: missingBins.length === 0 && missingScripts.length === 0 ? "ok" : "fail",
+      name_field: packageJson.name,
+      version: packageJson.version,
+      missing_bins: missingBins,
+      missing_scripts: missingScripts,
+    });
+  } catch (error) {
+    checks.push({ name: "package:metadata", status: "fail", error: formatError(error) });
   }
 }
 

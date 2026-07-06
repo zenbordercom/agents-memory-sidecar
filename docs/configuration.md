@@ -2,6 +2,15 @@
 
 Configuration is environment-variable driven.
 
+## Related Docs
+
+- [Architecture](architecture.md)
+- [Security Model](security-model.md)
+- [PostgreSQL Quickstart](postgres-quickstart.md)
+- [Semantic And Hybrid Search](semantic-search.md)
+- [Agent Integrations](agent-integrations.md)
+- [Operations](operations.md)
+
 ## Core
 
 ```bash

@@ -2,6 +2,13 @@
 
 Use a private env file and launcher script for each agent.
 
+## Related Docs
+
+- [Configuration](configuration.md)
+- [Security Model](security-model.md)
+- [Codex Integration](../integrations/codex/README.md)
+- [PostgreSQL Quickstart](postgres-quickstart.md)
+
 ## Launcher Pattern
 
 ```bash

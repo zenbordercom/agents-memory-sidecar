@@ -2,6 +2,15 @@
 
 This project includes operational scripts for local Linux deployments. Review and adapt them before using in production.
 
+## Related Docs
+
+- [Configuration](configuration.md)
+- [Security Model](security-model.md)
+- [PostgreSQL Quickstart](postgres-quickstart.md)
+- [30-Minute Durable Deployment Transcript](30-minute-durable-deployment-transcript.md)
+- [Backup And Restore](backup-restore.md)
+- [Release Checklist](release-checklist.md)
+
 ## Local Install Helper
 
 From a checked-out repository:

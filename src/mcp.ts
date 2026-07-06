@@ -16,7 +16,7 @@ const searchMode = z.enum(["keyword", "semantic", "hybrid"]);
 export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServer {
   const server = new McpServer({
     name: "agents-memory-sidecar",
-    version: "0.1.1",
+    version: "0.2.0",
   });
 
   server.registerTool(

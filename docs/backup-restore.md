@@ -2,6 +2,13 @@
 
 The backup scripts assume PostgreSQL and a local GPG passphrase file.
 
+## Related Docs
+
+- [Operations](operations.md)
+- [Configuration](configuration.md)
+- [Security Model](security-model.md)
+- [PostgreSQL Quickstart](postgres-quickstart.md)
+
 ## Backup
 
 ```bash

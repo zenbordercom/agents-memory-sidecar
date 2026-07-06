@@ -6,6 +6,33 @@ Agents Memory Sidecar has two local-facing layers:
 Agent CLI -> stdio MCP wrapper -> HTTP sidecar -> store
 ```
 
+## High-Level Flow
+
+```text
+Codex / Claude / Grok / agy / Pi
+        |
+        | stdio MCP
+        v
+agents-memory-mcp
+        |
+        | localhost HTTP + bearer token
+        v
+agents-memory-http on 127.0.0.1
+        |
+        +--> fake JSON store for demo and smoke tests
+        |
+        +--> PostgreSQL + pgvector for durable operation
+                 |
+                 +--> memory_items
+                 +--> project_contexts
+                 +--> agent_observations
+                 +--> audit_events
+                 +--> memory_embeddings
+```
+
+The HTTP boundary is local-only by design. Actor identity is derived from the
+HTTP bearer token registry rather than model-provided fields.
+
 The store can be:
 
 - fake JSON store for local development
@@ -38,3 +65,11 @@ The store can be:
 5. Actor identity is derived from the token registry.
 6. The store handles search/read/write.
 7. Writes and authorization failures produce audit events.
+
+## Related Docs
+
+- [Configuration](configuration.md)
+- [Security Model](security-model.md)
+- [PostgreSQL Quickstart](postgres-quickstart.md)
+- [Semantic And Hybrid Search](semantic-search.md)
+- [Agent Integrations](agent-integrations.md)

@@ -6,3 +6,9 @@
 - Secret scanning is a safety net, not complete DLP.
 - Project naming discipline matters. Inconsistent project names reduce recall.
 - Short targeted queries usually work better than long mixed-language prompts.
+
+## Related Docs
+
+- [Security Model](security-model.md)
+- [Semantic And Hybrid Search](semantic-search.md)
+- [Operations](operations.md)

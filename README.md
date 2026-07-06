@@ -33,19 +33,24 @@ The HTTP server is intended to listen on `127.0.0.1` only. Do not expose it dire
 
 ## Search Modes
 
-Search defaults to keyword/full-text mode. PostgreSQL deployments can enable `semantic` or `hybrid` mode after backfilling `memory_embeddings`; see [Configuration](docs/configuration.md).
+Search defaults to keyword/full-text mode. PostgreSQL deployments can enable `semantic` or `hybrid` mode after backfilling `memory_embeddings`; see [Configuration](docs/configuration.md) and [Semantic And Hybrid Search](docs/semantic-search.md).
+
+## Guides
+
+- [Architecture](docs/architecture.md)
+- [5-Minute Demo Transcript](docs/5-minute-demo-transcript.md)
+- [PostgreSQL Quickstart](docs/postgres-quickstart.md)
+- [30-Minute Durable Deployment Transcript](docs/30-minute-durable-deployment-transcript.md)
+- [Semantic And Hybrid Search](docs/semantic-search.md)
+- [Agent Integrations](docs/agent-integrations.md)
+- [Operations](docs/operations.md)
+- [Backup And Restore](docs/backup-restore.md)
+- [Security Model](docs/security-model.md)
+- [Release Checklist](docs/release-checklist.md)
 
 ## Quick Start
 
-```bash
-npm install
-npm run build
-npm run smoke
-npm run http:smoke
-npm run http:bridge-smoke
-```
-
-Install from GitHub:
+### Install From Source
 
 ```bash
 git clone https://github.com/zenbordercom/agents-memory-sidecar.git
@@ -54,7 +59,151 @@ npm install
 npm run build
 ```
 
-Install globally from the GitHub release tag:
+Validate the checkout and build output:
+
+```bash
+node scripts/check-installation.mjs --profile quickstart --pretty
+```
+
+### Demo Mode
+
+Demo mode uses the fake JSON store and does not require PostgreSQL, systemd, or
+production config files:
+
+```bash
+npm run smoke
+npm run http:smoke
+npm run http:bridge-smoke
+```
+
+Use the fallback CLI against the fake store:
+
+```bash
+AGENT_MEMORY_AGENT_ID=local-cli \
+AGENT_MEMORY_RUNTIME=local \
+AGENT_MEMORY_ROLE=writer \
+AGENT_MEMORY_PROJECTS='*' \
+node dist/cli.js memory_add '{
+  "tenant":"default",
+  "project":"demo-app",
+  "namespace":"ops",
+  "kind":"note",
+  "title":"Demo memory",
+  "body":"Agents Memory Sidecar demo mode is running with the fake store.",
+  "source_type":"manual"
+}'
+```
+
+Search it:
+
+```bash
+AGENT_MEMORY_AGENT_ID=local-cli \
+AGENT_MEMORY_RUNTIME=local \
+AGENT_MEMORY_ROLE=writer \
+AGENT_MEMORY_PROJECTS='*' \
+node dist/cli.js memory_search '{
+  "tenant":"default",
+  "project":"demo-app",
+  "query":"demo mode",
+  "limit":5
+}'
+```
+
+### Local HTTP Sidecar Mode
+
+Create a private local token registry:
+
+```bash
+mkdir -p .local/agents-memory
+node scripts/upsert-http-token.mjs \
+  --file .local/agents-memory/http-tokens.json \
+  --agent-id local-cli \
+  --runtime local \
+  --role writer \
+  --projects '*'
+```
+
+The token script prints a fingerprint only. For local development, load the
+generated token into your shell from the private registry file:
+
+```bash
+export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+)"
+```
+
+Start the HTTP sidecar in one terminal:
+
+```bash
+AGENT_MEMORY_HTTP_TOKENS_FILE="$PWD/.local/agents-memory/http-tokens.json" \
+AGENT_MEMORY_HTTP_HOST=127.0.0.1 \
+AGENT_MEMORY_HTTP_PORT=18790 \
+npm run http:dev
+```
+
+In another terminal, call it through the CLI HTTP backend:
+
+```bash
+export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
+  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));console.log(Object.keys(r)[0])"
+)"
+
+AGENT_MEMORY_BACKEND=http \
+AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790 \
+AGENT_MEMORY_AGENT_ID=local-cli \
+AGENT_MEMORY_RUNTIME=local \
+AGENT_MEMORY_ROLE=writer \
+AGENT_MEMORY_PROJECTS='*' \
+node dist/cli.js memory_add '{
+  "tenant":"default",
+  "project":"demo-app",
+  "namespace":"ops",
+  "kind":"note",
+  "title":"HTTP sidecar demo",
+  "body":"The local HTTP sidecar accepts bearer-token memory writes.",
+  "source_type":"manual"
+}'
+```
+
+Search it:
+
+```bash
+AGENT_MEMORY_BACKEND=http \
+AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790 \
+AGENT_MEMORY_AGENT_ID=local-cli \
+AGENT_MEMORY_RUNTIME=local \
+AGENT_MEMORY_ROLE=writer \
+AGENT_MEMORY_PROJECTS='*' \
+node dist/cli.js memory_search '{
+  "tenant":"default",
+  "project":"demo-app",
+  "query":"HTTP sidecar",
+  "limit":5
+}'
+```
+
+### Durable PostgreSQL Mode
+
+Use PostgreSQL when you want durable shared memory:
+
+```bash
+AGENT_MEMORY_BACKEND=postgres \
+PGDATABASE=agents_memory \
+npm run db:migrate
+```
+
+Then run the PostgreSQL smoke test:
+
+```bash
+npm run postgres:smoke
+```
+
+See [PostgreSQL Quickstart](docs/postgres-quickstart.md) for a complete local
+database setup.
+
+## Installation Options
+
+Install globally from the npm registry:
 
 ```bash
 npm install -g agents-memory-sidecar
@@ -63,13 +212,13 @@ npm install -g agents-memory-sidecar
 Or install from the GitHub release tag:
 
 ```bash
-npm install -g github:zenbordercom/agents-memory-sidecar#v0.1.1
+npm install -g github:zenbordercom/agents-memory-sidecar#v0.2.0
 ```
 
 Or install the release tarball:
 
 ```bash
-npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.1.1/agents-memory-sidecar-0.1.1.tgz
+npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.2.0/agents-memory-sidecar-0.2.0.tgz
 ```
 
 The CLI entry points are:
@@ -80,43 +229,19 @@ agents-memory-mcp
 agents-memory-http
 ```
 
-Run the stdio MCP wrapper with the fake store:
+- `agents-memory`: JSON CLI for direct commands and fallback automation.
+- `agents-memory-mcp`: stdio MCP wrapper for agent clients.
+- `agents-memory-http`: local HTTP sidecar.
 
-```bash
-AGENT_MEMORY_AGENT_ID=local-agent \
-AGENT_MEMORY_RUNTIME=local \
-AGENT_MEMORY_ROLE=writer \
-AGENT_MEMORY_PROJECTS='*' \
-npm run dev
-```
+## Quick Start Troubleshooting
 
-Run the HTTP sidecar locally with PostgreSQL after configuring the database:
-
-```bash
-AGENT_MEMORY_BACKEND=postgres \
-AGENT_MEMORY_HTTP_HOST=127.0.0.1 \
-AGENT_MEMORY_HTTP_PORT=18790 \
-npm run http:dev
-```
-
-Use the fallback CLI:
-
-```bash
-node dist/cli.js memory_search '{"tenant":"default","project":"demo-app","query":"deployment","limit":5}'
-```
-
-## PostgreSQL
-
-Create a PostgreSQL database and install migrations:
-
-```bash
-createdb agents_memory
-AGENT_MEMORY_BACKEND=postgres \
-PGDATABASE=agents_memory \
-npm run db:migrate
-```
-
-For production, use a restricted application role and store connection settings outside the repository. See [Configuration](docs/configuration.md).
+- Missing `dist/*.js`: run `npm run build`.
+- Missing token registry: create one with `scripts/upsert-http-token.mjs` and
+  set `AGENT_MEMORY_HTTP_TOKENS_FILE`.
+- HTTP connection refused: start `agents-memory-http` or `npm run http:dev`,
+  then run `node scripts/check-installation.mjs --profile quickstart --check-http --expected-backend fake --pretty`.
+- `permission_denied`: check that the bearer token actor has the required role
+  and project access.
 
 ## Agent Setup
 
@@ -155,6 +280,14 @@ See [Operations](docs/operations.md) and [Backup And Restore](docs/backup-restor
 - The project does not replace an agent's internal conversation memory.
 - The sidecar is local-first and not designed as a public multi-tenant SaaS API.
 - Fresh install automation is intentionally minimal in this version.
+
+## What This Is Not
+
+- Not a hosted SaaS API or public internet service.
+- Not an agent scheduler or orchestration framework.
+- Not a secret manager.
+- Not full conversation memory.
+- Not a replacement for each agent's native session state.
 
 ## License
 
