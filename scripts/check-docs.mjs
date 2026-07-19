@@ -2,6 +2,7 @@
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
 const documentationRoots = [
@@ -29,6 +30,7 @@ for (const file of documentationFiles) {
   const content = await readFile(file, "utf8");
   await checkRelativeLinks(file, content);
   checkEnvironmentVariables(file, content);
+  checkShellBlocks(file, content);
 }
 
 if (failures.length > 0) {
@@ -119,6 +121,23 @@ function checkEnvironmentVariables(file, content) {
       failures.push(
         `${display(file)} references an unknown environment variable: ${match}`,
       );
+  }
+}
+
+function checkShellBlocks(file, content) {
+  let blockNumber = 0;
+  for (const match of content.matchAll(/^```(?:bash|sh|shell)\s*\n([\s\S]*?)^```/gm)) {
+    blockNumber += 1;
+    const result = spawnSync("bash", ["-n"], {
+      encoding: "utf8",
+      input: match[1],
+    });
+    if (result.status !== 0) {
+      const detail = (result.stderr || result.stdout).trim();
+      failures.push(
+        `${display(file)} shell block ${blockNumber} is invalid: ${detail}`,
+      );
+    }
   }
 }
 
