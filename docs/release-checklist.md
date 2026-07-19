@@ -143,8 +143,9 @@ git tag -a v0.3.0 -m "v0.3.0"
 
   The trust commands are sensitive package-setting operations and may require
   a fresh browser 2FA approval even after `npm login`.
-- The workflow publishes the package, verifies the intended dist-tag, and
-  creates the GitHub Release with npm integrity metadata.
+- The workflow publishes the package, waits for the intended dist-tag to become
+  visible in the registry, and creates the GitHub Release with the registry
+  tarball and npm integrity metadata.
 - If Trusted Publishing is unavailable, maintainers may temporarily change the
   publish step to use an automation token with only package publish scope,
   stored as the protected `NPM_TOKEN` environment secret. Do not use a personal
