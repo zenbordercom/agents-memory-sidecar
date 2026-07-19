@@ -57,7 +57,12 @@ async function main() {
     source_ref: "manual:http-bridge-smoke",
   });
 
-  const httpServer = createHttpApp(writer, store);
+  // Test-only unauthenticated mode: production agents-memory-http never sets this.
+  const httpServer = createHttpApp({
+    actor: writer,
+    store,
+    allowUnauthenticatedForTests: true,
+  });
   await new Promise<void>((resolveListen) => httpServer.listen(0, "127.0.0.1", resolveListen));
   const baseUrl = listenUrl(httpServer);
 

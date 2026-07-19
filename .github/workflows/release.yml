@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: agents_memory
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agents_memory"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run docs:check
+      - run: npm test
+      - run: npm run coverage
+      - run: npm run smoke
+      - run: npm run http:smoke
+      - run: npm run http:bridge-smoke
+      - run: npm run http:security-smoke
+      - run: npm run db:migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGDATABASE: agents_memory
+          PGUSER: postgres
+          PGPASSWORD: postgres
+      - run: npm run postgres:smoke
+        env:
+          PGHOST: 127.0.0.1
+          PGDATABASE: agents_memory
+          PGUSER: postgres
+          PGPASSWORD: postgres
+      - run: npm run search:benchmark
+        env:
+          AGENT_MEMORY_BACKEND: postgres
+          PGHOST: 127.0.0.1
+          PGDATABASE: agents_memory
+          PGUSER: postgres
+          PGPASSWORD: postgres
+      - run: npm run compose:smoke
+      - name: Resolve release metadata
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "${VERSION}" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "DIST_TAG=${DIST_TAG}" >> "$GITHUB_ENV"
+      - run: node scripts/verify-release.mjs --tag "${GITHUB_REF_NAME}" --version "${VERSION}"
+      - run: node scripts/verify-package.mjs
+      - name: Refuse existing npm version
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "${PACKAGE_NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE_NAME}@${VERSION} already exists on npm"
+            exit 1
+          fi
+      # npm Trusted Publishing exchanges this workflow's OIDC token at publish
+      # time. The npm package configuration is the authorization boundary.
+      - run: npm publish --provenance --access public --tag "${DIST_TAG}"
+      - name: Verify registry metadata
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          test "$(npm view "${PACKAGE_NAME}@${VERSION}" version)" = "${VERSION}"
+          test "$(npm view "${PACKAGE_NAME}" dist-tags."${DIST_TAG}")" = "${VERSION}"
+          npm view "${PACKAGE_NAME}@${VERSION}" dist.integrity > release-integrity.txt
+          printf 'npm package: %s@%s\n\nSHA-512 integrity:\n%s\n' "${PACKAGE_NAME}" "${VERSION}" "$(cat release-integrity.txt)" > release-notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: release-integrity.txt

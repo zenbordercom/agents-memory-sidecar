@@ -76,6 +76,11 @@ The `systemd/` directory contains example units. Adjust paths, users, groups, ha
 
 ## Token Maintenance
 
+The HTTP sidecar fails closed without a valid token registry. Ensure
+`AGENT_MEMORY_HTTP_TOKENS_FILE` (or `AGENT_MEMORY_HTTP_TOKENS_JSON`) is set in
+`/etc/agents-memory/sidecar.env` before starting systemd. A missing or invalid
+registry prevents the process from listening.
+
 ```bash
 node scripts/upsert-http-token.mjs --list --file /etc/agents-memory/http-tokens.json
 ```
@@ -92,3 +97,12 @@ node scripts/upsert-http-token.mjs \
 ```
 
 The script prints token fingerprints and actor metadata. Do not commit the token registry.
+
+After rotating tokens, restart the sidecar:
+
+```bash
+sudo systemctl restart agents-memory-sidecar
+```
+
+`GET /healthz` does not require a bearer token and is suitable for local
+liveness probes against the loopback listener.

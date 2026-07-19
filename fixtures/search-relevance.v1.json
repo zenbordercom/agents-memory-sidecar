@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "embedding_model": "fixture-3d-v1",
+  "memories": [
+    {
+      "key": "deployment-runbook",
+      "namespace": "ops",
+      "kind": "runbook",
+      "title": "Blue deployment rollback",
+      "body": "Use the blue deployment rollback runbook after a failed release.",
+      "embedding": [0.9, 0.1, 0.1]
+    },
+    {
+      "key": "incident-escalation",
+      "namespace": "ops",
+      "kind": "incident",
+      "title": "Database incident escalation",
+      "body": "Escalate database connection incidents to the on-call engineer.",
+      "embedding": [0.1, 0.9, 0.1]
+    },
+    {
+      "key": "namespace-convention",
+      "namespace": "governance",
+      "kind": "convention",
+      "title": "Memory namespace convention",
+      "body": "Use one stable project name and short namespaces for durable memory.",
+      "embedding": [0.1, 0.1, 0.9]
+    }
+  ],
+  "queries": [
+    {
+      "key": "rollback-keyword",
+      "query": "blue deployment rollback",
+      "embedding": [0.9, 0.1, 0.1],
+      "relevant": ["deployment-runbook"]
+    },
+    {
+      "key": "incident-semantic",
+      "query": "who handles a broken database connection",
+      "embedding": [0.1, 0.9, 0.1],
+      "relevant": ["incident-escalation"]
+    },
+    {
+      "key": "project-hybrid",
+      "query": "stable project namespace convention",
+      "embedding": [0.1, 0.1, 0.9],
+      "relevant": ["namespace-convention"]
+    }
+  ]
+}

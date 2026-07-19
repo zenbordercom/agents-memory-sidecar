@@ -2,6 +2,12 @@
 
 Configuration is environment-variable driven.
 
+## Runtime Support
+
+Agents Memory Sidecar supports Node.js 22 and later. CI verifies the current
+22.x and 24.x release lines; PostgreSQL + pgvector integration runs on Node
+24.x as the canonical database test environment.
+
 ## Related Docs
 
 - [Architecture](architecture.md)
@@ -39,6 +45,40 @@ AGENT_MEMORY_HTTP_PORT=18790
 AGENT_MEMORY_HTTP_TOKENS_FILE=/etc/agents-memory/http-tokens.json
 ```
 
+### Authentication (fail closed)
+
+`agents-memory-http` refuses to listen unless one of the following is true:
+
+1. A valid token registry is configured via `AGENT_MEMORY_HTTP_TOKENS_FILE` or
+   `AGENT_MEMORY_HTTP_TOKENS_JSON`, or
+2. Explicit loopback demo mode is enabled with
+   `AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1` **and** the bind host is
+   loopback (`127.0.0.1`, `::1`, or `localhost`).
+
+This is a breaking change from older releases that fell back to the process
+environment actor when no registry was configured.
+
+Startup validates every registry entry: non-empty bearer token key, `agentId`,
+`runtime`, role (`reader`|`writer`|`admin`), and a non-empty `projects` array.
+Validation errors are actionable and never include full bearer token values.
+
+`GET /healthz` remains unauthenticated so local liveness probes work without a
+token. All other routes require a valid bearer token when a registry is
+configured.
+
+Unexpected handler failures return HTTP 500 with a stable public body:
+
+```json
+{ "error": "internal_error", "request_id": "..." }
+```
+
+Internal exception detail is written only to server logs with the same
+`request_id`.
+
+Malformed client requests use stable 4xx errors and do not include parser
+detail: `invalid_json` (400), `invalid_request` (400),
+`invalid_search_mode` (400), and `request_body_too_large` (413).
+
 ## Agent Actor
 
 ```bash
@@ -61,6 +101,32 @@ See `config/http-tokens.example.json`.
 
 The registry maps full bearer tokens to actor metadata. Keep the real registry outside Git and restrict file permissions.
 
+Example entry shape:
+
+```json
+{
+  "replace-with-random-token": {
+    "tenant": "default",
+    "agentId": "codex-cli",
+    "runtime": "codex",
+    "role": "writer",
+    "projects": ["*"]
+  }
+}
+```
+
+### Loopback demo opt-in
+
+For local demos without a registry (not for production):
+
+```bash
+AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1 \
+AGENT_MEMORY_HTTP_HOST=127.0.0.1 \
+npm run http:dev
+```
+
+Unauthenticated mode is rejected when the bind host is not loopback.
+
 ## Search Mode
 
 Keyword search is the default:
@@ -77,4 +143,4 @@ AGENT_MEMORY_EMBEDDING_MODEL=nomic-embed-text
 AGENT_MEMORY_EMBEDDING_OLLAMA_BASE_URL=http://127.0.0.1:11434
 ```
 
-`semantic` mode returns vector matches only. `hybrid` mode combines full-text rank with vector similarity. API callers may also pass `mode`, `embedding_model`, and `query_embedding` per search request.
+`semantic` mode returns vector matches only. `hybrid` mode combines full-text rank with vector similarity. API callers may also pass `mode`, `embedding_model`, and `query_embedding` per search request. The accepted `mode` values are `keyword`, `semantic`, and `hybrid`; other values return `invalid_search_mode`.

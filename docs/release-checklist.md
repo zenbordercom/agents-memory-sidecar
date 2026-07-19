@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist for tagged releases. Replace `0.2.1` with the target version.
+Use this checklist for tagged releases. Replace `0.3.0` with the target version.
 
 ## Related Docs
 
@@ -25,9 +25,15 @@ Run the local checks:
 npm ci
 npm run typecheck
 npm run build
+npm run docs:check
+npm test
+npm run coverage
 npm run smoke
 npm run http:smoke
 npm run http:bridge-smoke
+npm run http:security-smoke
+node scripts/verify-release.mjs --version 0.3.0 --tag v0.3.0
+node scripts/verify-package.mjs
 node scripts/check-installation.mjs --profile quickstart --pretty
 ```
 
@@ -61,6 +67,7 @@ The package should include:
 - `config/*.example*`
 - `integrations/`
 - `scripts/`
+- `fixtures/`
 - `systemd/`
 - `README.md`
 - `LICENSE`
@@ -84,12 +91,25 @@ Create the tarball:
 npm pack
 ```
 
+## Release Paths
+
+- Stable: use a final semver version such as `0.3.0`, add a matching dated
+  changelog heading, and push `v0.3.0`. The workflow publishes npm `latest`.
+- Prerelease: use a prerelease semver version such as `0.3.0-rc.1`, add a
+  matching changelog heading, and push `v0.3.0-rc.1`. The workflow publishes
+  npm `next` and never moves `latest`.
+- Hotfix: use a final patch version such as `0.3.1`, document the focused fix,
+  and push `v0.3.1`. It follows the stable path and publishes `latest`.
+
+The release workflow rejects a tag/package/changelog mismatch and refuses to
+republish an existing npm version.
+
 ## Version And Tag
 
 If the version still needs to be updated:
 
 ```bash
-npm version 0.2.1 --no-git-tag-version
+npm version 0.3.0 --no-git-tag-version
 ```
 
 After final validation:
@@ -97,21 +117,24 @@ After final validation:
 ```bash
 git status --short
 git add -A
-git commit -m "Prepare v0.2.1 release"
-git tag -a v0.2.1 -m "v0.2.1"
+git commit -m "Prepare v0.3.0 release"
+git tag -a v0.3.0 -m "v0.3.0"
 ```
 
 ## GitHub Release
 
-- Push the branch and tag.
-- Confirm CI passes on the tag.
-- Create a GitHub release for the tag.
-- Attach the `agents-memory-sidecar-0.2.1.tgz` artifact if publishing release
-  tarballs through GitHub.
-- Confirm the README install commands reference the released version.
-- If publishing to the npm registry, run `npm publish` only after the GitHub
-  release is verified, then confirm `npm view agents-memory-sidecar version`
-  reports the target version.
+- Push the branch and tag. The protected GitHub Actions `Release` workflow is
+  the only stable publication path.
+- Configure npm Trusted Publishing for `zenbordercom/agents-memory-sidecar`
+  and the repository's `Release` workflow before the first automated release.
+  It uses GitHub OIDC, npm provenance, and the protected `npm` environment.
+- The workflow publishes the package, verifies the intended dist-tag, and
+  creates the GitHub Release with npm integrity metadata.
+- If Trusted Publishing is unavailable, maintainers may temporarily change the
+  publish step to use an automation token with only package publish scope,
+  stored as the protected `NPM_TOKEN` environment secret. Do not use a personal
+  broad-scope token or publish from a workstation; restore the tokenless OIDC
+  publish step after Trusted Publishing is configured.
 
 ## Post-Release Smoke
 

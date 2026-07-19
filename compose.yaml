@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    env_file:
+      - ./.local/agents-memory-compose/postgres.env
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./.local/agents-memory-compose/postgres.env
+    environment:
+      AGENT_MEMORY_BACKEND: postgres
+      AGENT_MEMORY_HTTP_HOST: 0.0.0.0
+      AGENT_MEMORY_HTTP_PORT: 18790
+      AGENT_MEMORY_HTTP_TOKENS_FILE: /run/agents-memory/http-tokens.json
+      PGHOST: postgres
+      PGPORT: 5432
+    ports:
+      - "127.0.0.1:18790:18790"
+    volumes:
+      - ./.local/agents-memory-compose/http-tokens.json:/run/agents-memory/http-tokens.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - node dist/migrate.js && exec node dist/http-server.js
+    init: true
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:18790/healthz'').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres_data:
