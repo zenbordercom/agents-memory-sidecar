@@ -130,10 +130,11 @@ git tag -a v0.3.0 -m "v0.3.0"
   It uses GitHub OIDC, npm provenance, and the protected `npm` environment.
 - The workflow publishes the package, verifies the intended dist-tag, and
   creates the GitHub Release with npm integrity metadata.
-- If Trusted Publishing is unavailable, maintainers may temporarily use an
-  automation token with only package publish scope, stored as the protected
-  `NPM_TOKEN` environment secret. Do not use a personal broad-scope token or
-  publish from a workstation; remove the fallback after OIDC is configured.
+- If Trusted Publishing is unavailable, maintainers may temporarily change the
+  publish step to use an automation token with only package publish scope,
+  stored as the protected `NPM_TOKEN` environment secret. Do not use a personal
+  broad-scope token or publish from a workstation; restore the tokenless OIDC
+  publish step after Trusted Publishing is configured.
 
 ## Post-Release Smoke
 
