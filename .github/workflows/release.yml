@@ -65,6 +65,7 @@ jobs:
           PGDATABASE: agents_memory
           PGUSER: postgres
           PGPASSWORD: postgres
+      - run: npm run compose:smoke
       - name: Resolve release metadata
         run: |
           VERSION=$(node -p "require('./package.json').version")

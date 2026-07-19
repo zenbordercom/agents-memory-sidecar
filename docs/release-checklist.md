@@ -67,6 +67,7 @@ The package should include:
 - `config/*.example*`
 - `integrations/`
 - `scripts/`
+- `fixtures/`
 - `systemd/`
 - `README.md`
 - `LICENSE`
