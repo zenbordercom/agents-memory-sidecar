@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { URL } from "node:url";
@@ -6,13 +6,102 @@ import { randomUUID } from "node:crypto";
 import { actorFromEnv, canAdmin, canRead, canWrite } from "./actor.js";
 import { scanForSecrets } from "./security.js";
 import { createStoreFromEnv } from "./store-factory.js";
-import type { Actor } from "./types.js";
+import type { Actor, Role } from "./types.js";
 import type { MemoryStore } from "./store.js";
 
 const maxBodyBytes = 256 * 1024;
 const logContext = new WeakMap<ServerResponse, RequestLogContext>();
+const storeCloseHooks = new WeakMap<Server, () => Promise<void>>();
+const validRoles = new Set<Role>(["reader", "writer", "admin"]);
 
-export function createHttpApp(actor: Actor = actorFromEnv(), store: MemoryStore = createStoreFromEnv()) {
+export type TokenRegistryEntry = {
+  tenant?: string;
+  agentId: string;
+  runtime: string;
+  workspace?: string;
+  role: Role;
+  projects: string[];
+};
+
+export type TokenRegistry = Record<string, TokenRegistryEntry>;
+
+export type HttpAuthState =
+  | { mode: "token_registry"; registry: TokenRegistry; fallback: Actor }
+  | { mode: "unauthenticated_local"; fallback: Actor };
+
+export type CreateHttpAppOptions = {
+  actor?: Actor;
+  store?: MemoryStore;
+  /** Fully resolved auth state. When omitted, resolved from env (or test opt-in). */
+  auth?: HttpAuthState;
+  /** Bind host used when resolving env auth (unauthenticated mode must be loopback). */
+  host?: string;
+  env?: NodeJS.ProcessEnv;
+  /**
+   * Test-only: allow requests without a token registry using the provided actor.
+   * Production `agents-memory-http` never sets this flag.
+   */
+  allowUnauthenticatedForTests?: boolean;
+  /** Test-only injected registry (skips env file/json load). */
+  tokenRegistry?: TokenRegistry;
+};
+
+export function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "localhost" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "[::1]"
+  );
+}
+
+/**
+ * Resolve HTTP authentication before the server listens.
+ * Fails closed unless a valid token registry is configured, or explicit
+ * unauthenticated loopback demo mode is enabled.
+ */
+export function resolveHttpAuthFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  host = env.AGENT_MEMORY_HTTP_HOST ?? "127.0.0.1",
+): HttpAuthState {
+  const fallback = actorFromEnv(env);
+  const hasJson = Boolean(env.AGENT_MEMORY_HTTP_TOKENS_JSON?.trim());
+  const hasFile = Boolean(env.AGENT_MEMORY_HTTP_TOKENS_FILE?.trim());
+
+  if (hasJson || hasFile) {
+    const registry = loadAndValidateTokenRegistry(env);
+    return { mode: "token_registry", registry, fallback };
+  }
+
+  if (env.AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL === "1") {
+    if (!isLoopbackHost(host)) {
+      throw new Error(
+        "AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1 requires a loopback bind host " +
+          "(127.0.0.1, ::1, or localhost). " +
+          `Refusing to start with AGENT_MEMORY_HTTP_HOST=${host}`,
+      );
+    }
+    return { mode: "unauthenticated_local", fallback };
+  }
+
+  throw new Error(
+    "HTTP sidecar authentication is required. Set AGENT_MEMORY_HTTP_TOKENS_FILE or " +
+      "AGENT_MEMORY_HTTP_TOKENS_JSON to a valid token registry, or set " +
+      "AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1 only for deliberate loopback demos/tests.",
+  );
+}
+
+export function createHttpApp(
+  actorOrOptions?: Actor | CreateHttpAppOptions,
+  storeArg?: MemoryStore,
+): Server {
+  const options = normalizeCreateOptions(actorOrOptions, storeArg);
+  const store = options.store ?? createStoreFromEnv();
+  const fallbackActor = options.actor ?? actorFromEnv(options.env ?? process.env);
+  const auth = resolveCreateAuth(options, fallbackActor);
+
   const server = createServer(async (request, response) => {
     const startedAt = Date.now();
     const requestId = randomUUID();
@@ -40,18 +129,102 @@ export function createHttpApp(actor: Actor = actorFromEnv(), store: MemoryStore 
     });
 
     try {
-      await handleRequest(actor, store, request, response);
+      await handleRequest(auth, store, request, response);
     } catch (error) {
-      setLogContext(response, { error: error instanceof Error ? error.message : String(error) });
-      send(response, 500, { error: error instanceof Error ? error.message : String(error) });
+      if (error instanceof HttpRequestError) {
+        setLogContext(response, { error: error.code });
+        return send(response, error.status, { error: error.code });
+      }
+      const detail = error instanceof Error ? error.message : String(error);
+      setLogContext(response, { error: detail });
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "http_internal_error",
+          request_id: requestId,
+          method: request.method ?? "GET",
+          path: url.pathname,
+          error: detail,
+        }),
+      );
+      send(response, 500, { error: "internal_error", request_id: requestId });
     }
   });
 
+  let storeClosePromise: Promise<void> | undefined;
+  const closeStoreOnce = (): Promise<void> => {
+    if (!storeClosePromise) {
+      storeClosePromise = Promise.resolve(store.close?.());
+    }
+    return storeClosePromise;
+  };
+
   server.on("close", () => {
-    void store.close?.();
+    void closeStoreOnce().catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "http_store_close_error",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
   });
+  storeCloseHooks.set(server, closeStoreOnce);
 
   return server;
+}
+
+/** Attach SIGINT/SIGTERM handlers that stop the listener and close the store once. */
+export function attachGracefulShutdown(server: Server, store?: MemoryStore): () => void {
+  let shuttingDown = false;
+
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.error(
+      JSON.stringify({
+        level: "info",
+        event: "http_shutdown",
+        signal,
+      }),
+    );
+    server.close(async (error) => {
+      if (error) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "http_shutdown_error",
+            error: error.message,
+          }),
+        );
+        process.exitCode = 1;
+      }
+      try {
+        await (storeCloseHooks.get(server)?.() ?? Promise.resolve(store?.close?.()));
+      } catch (closeError) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "http_store_close_error",
+            error: closeError instanceof Error ? closeError.message : String(closeError),
+          }),
+        );
+        process.exitCode = 1;
+      }
+      // Allow the process to exit naturally once the event loop drains.
+    });
+  };
+
+  const onSigint = () => shutdown("SIGINT");
+  const onSigterm = () => shutdown("SIGTERM");
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
+
+  return () => {
+    process.off("SIGINT", onSigint);
+    process.off("SIGTERM", onSigterm);
+  };
 }
 
 export function listenUrl(server: ReturnType<typeof createServer>) {
@@ -59,8 +232,174 @@ export function listenUrl(server: ReturnType<typeof createServer>) {
   return `http://127.0.0.1:${address.port}`;
 }
 
+function normalizeCreateOptions(
+  actorOrOptions?: Actor | CreateHttpAppOptions,
+  storeArg?: MemoryStore,
+): CreateHttpAppOptions {
+  if (!actorOrOptions) {
+    return storeArg ? { store: storeArg } : {};
+  }
+
+  if (isActor(actorOrOptions)) {
+    return { actor: actorOrOptions, store: storeArg };
+  }
+
+  if (storeArg) {
+    return { ...actorOrOptions, store: actorOrOptions.store ?? storeArg };
+  }
+
+  return actorOrOptions;
+}
+
+function isActor(value: Actor | CreateHttpAppOptions): value is Actor {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "agentId" in value &&
+    "runtime" in value &&
+    "role" in value &&
+    "projects" in value &&
+    !("allowUnauthenticatedForTests" in value) &&
+    !("tokenRegistry" in value) &&
+    !("auth" in value) &&
+    !("store" in value) &&
+    !("host" in value) &&
+    !("env" in value)
+  );
+}
+
+function resolveCreateAuth(options: CreateHttpAppOptions, fallbackActor: Actor): HttpAuthState {
+  if (options.auth) {
+    return options.auth;
+  }
+
+  if (options.tokenRegistry) {
+    validateTokenRegistry(options.tokenRegistry);
+    return { mode: "token_registry", registry: options.tokenRegistry, fallback: fallbackActor };
+  }
+
+  if (options.allowUnauthenticatedForTests) {
+    return { mode: "unauthenticated_local", fallback: fallbackActor };
+  }
+
+  return resolveHttpAuthFromEnv(options.env ?? process.env, options.host ?? "127.0.0.1");
+}
+
+function loadAndValidateTokenRegistry(env: NodeJS.ProcessEnv): TokenRegistry {
+  let raw: string;
+  let source: "AGENT_MEMORY_HTTP_TOKENS_JSON" | "AGENT_MEMORY_HTTP_TOKENS_FILE";
+
+  if (env.AGENT_MEMORY_HTTP_TOKENS_JSON?.trim()) {
+    raw = env.AGENT_MEMORY_HTTP_TOKENS_JSON;
+    source = "AGENT_MEMORY_HTTP_TOKENS_JSON";
+  } else if (env.AGENT_MEMORY_HTTP_TOKENS_FILE?.trim()) {
+    source = "AGENT_MEMORY_HTTP_TOKENS_FILE";
+    try {
+      raw = readFileSync(env.AGENT_MEMORY_HTTP_TOKENS_FILE, "utf8");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to read AGENT_MEMORY_HTTP_TOKENS_FILE (${env.AGENT_MEMORY_HTTP_TOKENS_FILE}): ${detail}`,
+      );
+    }
+  } else {
+    throw new Error("Token registry is not configured");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`${source} is not valid JSON. Provide an object mapping bearer tokens to actor records.`);
+  }
+
+  return validateTokenRegistry(parsed, source);
+}
+
+export function validateTokenRegistry(parsed: unknown, source = "token registry"): TokenRegistry {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${source} must be a JSON object mapping bearer tokens to actor records.`);
+  }
+
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  if (entries.length === 0) {
+    throw new Error(`${source} must contain at least one bearer token entry.`);
+  }
+
+  const registry: TokenRegistry = {};
+  let index = 0;
+  for (const [token, value] of entries) {
+    index += 1;
+    const label = `entry #${index}`;
+
+    if (typeof token !== "string" || token.trim().length === 0) {
+      throw new Error(`${source} ${label} has an empty bearer token key.`);
+    }
+    if (token !== token.trim()) {
+      throw new Error(`${source} ${label} bearer token key must not have leading or trailing whitespace.`);
+    }
+
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`${source} ${label} must be an object with agentId, runtime, role, and projects.`);
+    }
+
+    const record = value as Record<string, unknown>;
+    const agentId = record.agentId;
+    const runtime = record.runtime;
+    const role = record.role;
+    const projects = record.projects;
+
+    if (typeof agentId !== "string" || agentId.trim().length === 0) {
+      throw new Error(`${source} ${label} is missing a non-empty string agentId.`);
+    }
+    if (typeof runtime !== "string" || runtime.trim().length === 0) {
+      throw new Error(
+        `${source} ${label} (agentId=${agentId}) is missing a non-empty string runtime.`,
+      );
+    }
+    if (typeof role !== "string" || !validRoles.has(role as Role)) {
+      throw new Error(
+        `${source} ${label} (agentId=${agentId}) has invalid role; expected reader|writer|admin.`,
+      );
+    }
+    if (!Array.isArray(projects) || projects.length === 0) {
+      throw new Error(
+        `${source} ${label} (agentId=${agentId}) requires a non-empty projects array.`,
+      );
+    }
+    if (!projects.every((project) => typeof project === "string" && project.trim().length > 0)) {
+      throw new Error(
+        `${source} ${label} (agentId=${agentId}) has invalid projects; every entry must be a non-empty string.`,
+      );
+    }
+
+    const tenant = record.tenant;
+    const workspace = record.workspace;
+    if (tenant !== undefined && (typeof tenant !== "string" || tenant.trim().length === 0)) {
+      throw new Error(`${source} ${label} (agentId=${agentId}) has invalid tenant.`);
+    }
+    if (
+      workspace !== undefined &&
+      (typeof workspace !== "string" || workspace.trim().length === 0)
+    ) {
+      throw new Error(`${source} ${label} (agentId=${agentId}) has invalid workspace.`);
+    }
+
+    registry[token] = {
+      tenant: typeof tenant === "string" ? tenant : undefined,
+      agentId,
+      runtime,
+      workspace: typeof workspace === "string" ? workspace : undefined,
+      role: role as Role,
+      projects: projects as string[],
+    };
+  }
+
+  return registry;
+}
+
 async function handleRequest(
-  defaultActor: Actor,
+  auth: HttpAuthState,
   store: MemoryStore,
   request: IncomingMessage,
   response: ServerResponse,
@@ -68,11 +407,12 @@ async function handleRequest(
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   const method = request.method ?? "GET";
 
+  // /healthz remains unauthenticated for local liveness checks.
   if (method === "GET" && url.pathname === "/healthz") {
     return send(response, 200, { ok: true, backend: process.env.AGENT_MEMORY_BACKEND ?? "fake" });
   }
 
-  const actor = actorForRequest(request, defaultActor);
+  const actor = actorForRequest(request, auth);
 
   if (!actor) {
     setLogContext(response, { error: "unauthorized" });
@@ -224,7 +564,12 @@ async function handleRequest(
         tenant,
         project,
         action: "auth.permission_denied",
-        metadata: { method, path: url.pathname, operation: "context.set", key: decodeURIComponent(contextSetMatch[1]) },
+        metadata: {
+          method,
+          path: url.pathname,
+          operation: "context.set",
+          key: decodeURIComponent(contextSetMatch[1]),
+        },
       });
       return send(response, 403, { error: "permission_denied" });
     }
@@ -307,6 +652,15 @@ type RequestLogContext = {
   error?: string;
 };
 
+class HttpRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(code);
+  }
+}
+
 function setLogContext(response: ServerResponse, context: RequestLogContext) {
   logContext.set(response, { ...(logContext.get(response) ?? {}), ...context });
 }
@@ -340,13 +694,23 @@ async function readJson(request: IncomingMessage): Promise<Record<string, unknow
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.byteLength;
     if (size > maxBodyBytes) {
-      throw new Error("request_body_too_large");
+      throw new HttpRequestError(413, "request_body_too_large");
     }
     chunks.push(buffer);
   }
 
   const body = Buffer.concat(chunks).toString("utf8").trim();
-  return body ? (JSON.parse(body) as Record<string, unknown>) : {};
+  if (!body) return {};
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new HttpRequestError(400, "invalid_json");
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof HttpRequestError) throw error;
+    throw new HttpRequestError(400, "invalid_json");
+  }
 }
 
 function send(response: ServerResponse, status: number, value: unknown) {
@@ -355,7 +719,9 @@ function send(response: ServerResponse, status: number, value: unknown) {
 }
 
 function requiredString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.length === 0) throw new Error(`Missing required string: ${name}`);
+  if (typeof value !== "string" || value.length === 0) {
+    throw new HttpRequestError(400, "invalid_request");
+  }
   return value;
 }
 
@@ -380,13 +746,13 @@ function optionalNumberArray(value: unknown): number[] | undefined {
 function searchMode(value: unknown): "keyword" | "semantic" | "hybrid" | undefined {
   if (value === undefined) return undefined;
   if (value === "keyword" || value === "semantic" || value === "hybrid") return value;
-  throw new Error("Invalid search mode");
+  throw new HttpRequestError(400, "invalid_search_mode");
 }
 
 function numberOrDefault(value: unknown, fallback: number, min: number, max: number): number {
   const number = typeof value === "number" ? value : fallback;
   if (!Number.isInteger(number) || number < min || number > max) {
-    throw new Error(`Expected integer between ${min} and ${max}`);
+    throw new HttpRequestError(400, "invalid_request");
   }
   return number;
 }
@@ -399,7 +765,9 @@ function objectOrDefault(value: unknown): Record<string, unknown> {
 
 function sourceType(value: unknown) {
   const allowed = new Set(["user", "agent", "file", "command", "url", "system", "manual", "import"]);
-  if (typeof value !== "string" || !allowed.has(value)) throw new Error("Invalid source_type");
+  if (typeof value !== "string" || !allowed.has(value)) {
+    throw new HttpRequestError(400, "invalid_request");
+  }
   return value as any;
 }
 
@@ -407,44 +775,31 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function actorForRequest(request: IncomingMessage, fallback: Actor): Actor | undefined {
-  const tokens = loadTokenRegistry();
-  if (!tokens) {
-    return fallback;
+function actorForRequest(request: IncomingMessage, auth: HttpAuthState): Actor | undefined {
+  if (auth.mode === "unauthenticated_local") {
+    return auth.fallback;
   }
 
   const header = request.headers.authorization;
-  const token = typeof header === "string" && header.startsWith("Bearer ")
-    ? header.slice("Bearer ".length)
-    : undefined;
+  const token =
+    typeof header === "string" && header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length)
+      : undefined;
   if (!token) {
     return undefined;
   }
 
-  const registry = JSON.parse(tokens) as Record<string, Partial<Actor>>;
-  const actor = registry[token];
-  if (!actor?.agentId || !actor.runtime || !actor.role) {
+  const entry = auth.registry[token];
+  if (!entry) {
     return undefined;
   }
 
   return {
-    tenant: actor.tenant ?? fallback.tenant,
-    agentId: actor.agentId,
-    runtime: actor.runtime,
-    workspace: actor.workspace ?? fallback.workspace,
-    role: actor.role,
-    projects: actor.projects?.length ? actor.projects : fallback.projects,
+    tenant: entry.tenant ?? auth.fallback.tenant,
+    agentId: entry.agentId,
+    runtime: entry.runtime,
+    workspace: entry.workspace ?? auth.fallback.workspace,
+    role: entry.role,
+    projects: entry.projects,
   };
-}
-
-function loadTokenRegistry(): string | undefined {
-  if (process.env.AGENT_MEMORY_HTTP_TOKENS_JSON) {
-    return process.env.AGENT_MEMORY_HTTP_TOKENS_JSON;
-  }
-
-  if (process.env.AGENT_MEMORY_HTTP_TOKENS_FILE) {
-    return readFileSync(process.env.AGENT_MEMORY_HTTP_TOKENS_FILE, "utf8");
-  }
-
-  return undefined;
 }

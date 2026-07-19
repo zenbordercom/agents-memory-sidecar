@@ -1,0 +1,13 @@
+.git
+.github
+.agent-team
+.local
+node_modules
+dist
+coverage
+data
+*.tgz
+*.log
+.env
+.env.*
+!.env.example

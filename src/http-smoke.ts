@@ -19,7 +19,12 @@ async function main() {
     projects: ["*"],
   };
 
-  const server = createHttpApp(actor, new FakeStore(storePath));
+  // Test-only unauthenticated mode: production agents-memory-http never sets this.
+  const server = createHttpApp({
+    actor,
+    store: new FakeStore(storePath),
+    allowUnauthenticatedForTests: true,
+  });
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
   const baseUrl = listenUrl(server);
 

@@ -40,13 +40,20 @@ Search defaults to keyword/full-text mode. PostgreSQL deployments can enable `se
 - [Architecture](docs/architecture.md)
 - [5-Minute Demo Transcript](docs/5-minute-demo-transcript.md)
 - [PostgreSQL Quickstart](docs/postgres-quickstart.md)
+- [Docker Compose Quickstart](docs/compose-quickstart.md)
 - [30-Minute Durable Deployment Transcript](docs/30-minute-durable-deployment-transcript.md)
 - [Semantic And Hybrid Search](docs/semantic-search.md)
+- [Search Benchmark](docs/search-benchmark.md)
+- [Memory Governance](docs/memory-governance.md)
 - [Agent Integrations](docs/agent-integrations.md)
 - [Operations](docs/operations.md)
 - [Backup And Restore](docs/backup-restore.md)
 - [Security Model](docs/security-model.md)
 - [Release Checklist](docs/release-checklist.md)
+- [Support Matrix](docs/support-matrix.md)
+- [Good First Issues](docs/good-first-issues.md)
+- [v0.2.1 Release Evidence](docs/v0.2.1-release-evidence.md)
+- [v0.3.0 Construction Plan](docs/v0.3.0-construction-plan.md)
 
 ## Quick Start
 
@@ -110,6 +117,12 @@ node dist/cli.js memory_search '{
 ```
 
 ### Local HTTP Sidecar Mode
+
+HTTP authentication fails closed. `agents-memory-http` will not listen unless a
+valid token registry is configured (`AGENT_MEMORY_HTTP_TOKENS_FILE` or
+`AGENT_MEMORY_HTTP_TOKENS_JSON`). For deliberate loopback demos only, set
+`AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1` with a loopback bind host.
+`GET /healthz` stays unauthenticated for local liveness checks.
 
 Create a private local token registry:
 
@@ -203,24 +216,31 @@ database setup.
 
 ## Installation Options
 
-Install the current GitHub release tag:
+Install the current npm release:
+
+```bash
+npm install -g agents-memory-sidecar@0.2.1
+```
+
+Verify the registry version and dist-tag:
+
+```bash
+npm view agents-memory-sidecar version
+npm view agents-memory-sidecar dist-tags.latest
+```
+
+Both commands should print `0.2.1`.
+
+You can also install the matching GitHub release tag:
 
 ```bash
 npm install -g github:zenbordercom/agents-memory-sidecar#v0.2.1
 ```
 
-Or install the release tarball:
+Or install the GitHub release tarball:
 
 ```bash
 npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.2.1/agents-memory-sidecar-0.2.1.tgz
-```
-
-The npm registry package may lag the GitHub release. Check the registry version
-before using the unpinned npm install path:
-
-```bash
-npm view agents-memory-sidecar version  # must print 0.2.1 or newer
-npm install -g agents-memory-sidecar
 ```
 
 The CLI entry points are:
@@ -238,10 +258,13 @@ agents-memory-http
 ## Quick Start Troubleshooting
 
 - Missing `dist/*.js`: run `npm run build`.
-- Missing token registry: create one with `scripts/upsert-http-token.mjs` and
-  set `AGENT_MEMORY_HTTP_TOKENS_FILE`.
+- Missing token registry / startup refused: create a registry with
+  `scripts/upsert-http-token.mjs`, set `AGENT_MEMORY_HTTP_TOKENS_FILE`, and
+  restart. Tokenless mode requires
+  `AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1` on loopback only.
 - HTTP connection refused: start `agents-memory-http` or `npm run http:dev`,
   then run `node scripts/check-installation.mjs --profile quickstart --check-http --expected-backend fake --pretty`.
+- `unauthorized`: send `Authorization: Bearer <token>` from the registry.
 - `permission_denied`: check that the bearer token actor has the required role
   and project access.
 
@@ -258,6 +281,7 @@ See [Agent Integrations](docs/agent-integrations.md) and `integrations/*/README.
 ## Security Defaults
 
 - Bind the HTTP sidecar to `127.0.0.1`.
+- Require a token registry; do not rely on fail-open environment actor fallback.
 - Keep full bearer tokens out of Git, chat, logs, and docs.
 - Use separate tokens per agent.
 - Give normal agents `writer`, not `admin`.

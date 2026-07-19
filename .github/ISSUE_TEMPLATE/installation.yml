@@ -1,0 +1,33 @@
+name: Installation problem
+description: Report a failed install, build, or first-run check.
+title: "install: "
+labels: [installation]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include bearer tokens, passwords, private keys, raw .env files, or memory bodies.
+  - type: input
+    id: source
+    attributes:
+      label: Installation source
+      placeholder: npm package, GitHub release tarball, or source checkout
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Sidecar, Node.js, and npm versions
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Sanitized command and output
+      description: Include the failing command and remove all secret values.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: Installation diagnostic
+      description: Include sanitized output from node scripts/check-installation.mjs --profile quickstart --pretty when available.

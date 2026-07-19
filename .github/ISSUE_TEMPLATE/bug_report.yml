@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a reproducible behavior problem.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include bearer tokens, passwords, private keys, raw .env files, or memory bodies.
+  - type: input
+    id: version
+    attributes:
+      label: Sidecar version
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Node.js and operating system
+      placeholder: Node 24.x on Ubuntu 24.04
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options: [fake, postgres, http client, unknown]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include sanitized commands and expected versus actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove request bodies, tokens, passwords, and private paths.

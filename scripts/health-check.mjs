@@ -6,7 +6,7 @@ import { join } from "node:path";
 import pg from "pg";
 
 const args = parseArgs(process.argv.slice(2));
-const envFile = args["env-file"] ?? "/etc/agents-memory/sidecar.env";
+const envFile = args["env-file"] ?? process.env.AGENT_MEMORY_CONFIG_FILE ?? "/etc/agents-memory/sidecar.env";
 const backupDir = args["backup-dir"] ?? "/var/backups/agents-memory";
 const tokenFile = args["token-file"] ?? "/etc/agents-memory/http-tokens.json";
 const healthUrl = args["health-url"] ?? "http://127.0.0.1:18790/healthz";

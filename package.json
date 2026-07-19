@@ -2,6 +2,9 @@
   "name": "agents-memory-sidecar",
   "version": "0.2.1",
   "description": "Local-first shared memory sidecar for MCP-capable AI agents.",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/server.js",
   "bin": {
     "agents-memory": "dist/cli.js",
@@ -20,10 +23,19 @@
     "db:migrate": "tsx src/migrate.ts",
     "http:smoke": "tsx src/http-smoke.ts",
     "http:bridge-smoke": "tsx src/http-bridge-smoke.ts",
+    "http:security-smoke": "tsx src/http-security-smoke.ts",
     "http:postgres-mcp-smoke": "tsx src/http-postgres-mcp-smoke.ts",
     "postgres:smoke": "tsx src/postgres-smoke.ts",
     "smoke": "tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/*.test.ts",
+    "coverage": "c8 --all --extension .ts --include 'src/actor.ts' --include 'src/security.ts' --include 'src/http.ts' --check-coverage --lines 95 --functions 80 --reporter=text --reporter=json-summary tsx --test src/*.test.ts",
+    "docs:check": "node scripts/check-docs.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "package:verify": "node scripts/verify-package.mjs",
+    "compose:bootstrap": "node scripts/bootstrap-compose.mjs",
+    "compose:smoke": "bash scripts/compose-smoke.sh",
+    "search:benchmark": "node dist/search-benchmark.js --pretty",
     "start": "node dist/server.js",
     "prepack": "npm run build",
     "prepare": "npm run build"
@@ -52,6 +64,7 @@
     "config/*.example*",
     "integrations/",
     "scripts/",
+    "fixtures/",
     "systemd/",
     "README.md",
     "LICENSE",
@@ -68,6 +81,7 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/pg": "^8.20.0",
+    "c8": "12.0.0",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"
   }

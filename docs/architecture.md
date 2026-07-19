@@ -33,6 +33,26 @@ agents-memory-http on 127.0.0.1
 The HTTP boundary is local-only by design. Actor identity is derived from the
 HTTP bearer token registry rather than model-provided fields.
 
+## HTTP Trust Boundary
+
+```text
+HTTP sidecar startup
+        |
+        +-- valid token registry -----------------> listen; authenticate every API request
+        |
+        +-- explicit loopback demo flag ----------> listen without auth on loopback only
+        |
+        +-- anything else ------------------------> refuse to listen
+
+Unauthenticated: GET /healthz only
+Authenticated:   /v1/* (actor identity comes from the token registry)
+```
+
+The sidecar never starts an unauthenticated listener by default. A tokenless
+demo requires both `AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1` and a loopback
+bind host. Invalid registries also prevent the listener from starting. Public
+server errors are sanitized and include a request ID for correlation.
+
 The store can be:
 
 - fake JSON store for local development
