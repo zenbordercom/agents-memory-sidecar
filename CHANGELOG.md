@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 - 2026-07-19
+
+- Made the HTTP sidecar fail closed unless a valid token registry is configured;
+  loopback-only unauthenticated demo mode now requires explicit opt-in.
+- Added HTTP authorization, isolation, input-validation, secret-scanning, and
+  graceful-shutdown regression coverage with Node.js 22 and 24 CI validation.
+- Added PostgreSQL lifecycle and semantic/hybrid benchmark validation using
+  pgvector in CI, including explicit keyword fallback evidence.
+- Added production Docker Compose deployment, token bootstrap, and a CI
+  persistence smoke that exercises the CLI HTTP write/search/read path.
+- Added release package verification, tag/package/changelog checks, provenance
+  publication workflow, release environment guard, and npm integrity metadata.
+- Completed Apache License 2.0 text, public security-reporting guidance,
+  contribution templates, support matrix, governance documentation, and
+  clean-room demo evidence.
+
 ## 0.2.1 - 2026-07-06
 
 - Clarified that GitHub release installs are the authoritative current release path unless the npm registry has been updated.
