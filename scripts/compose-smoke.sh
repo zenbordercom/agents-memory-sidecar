@@ -36,6 +36,17 @@ write=$(curl --fail-with-body --silent --show-error \
   http://127.0.0.1:18790/v1/memory)
 memory_id=$(node -e "const value=JSON.parse(process.argv[1]);if(!value.accepted) throw new Error('write was not accepted');process.stdout.write(value.id)" "$write")
 
+cli_write=$(env \
+  AGENT_MEMORY_BACKEND=http \
+  AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790 \
+  AGENT_MEMORY_HTTP_BEARER_TOKEN="$token" \
+  AGENT_MEMORY_AGENT_ID=compose-local-cli \
+  AGENT_MEMORY_RUNTIME=compose \
+  AGENT_MEMORY_ROLE=writer \
+  AGENT_MEMORY_PROJECTS='*' \
+  node dist/cli.js memory_add '{"tenant":"default","project":"compose-smoke","namespace":"ops","kind":"note","title":"Compose CLI persistence","body":"Compose smoke validates the durable CLI HTTP path.","source_type":"manual"}')
+cli_memory_id=$(node -e "const value=JSON.parse(process.argv[1]);if(!value.accepted) throw new Error('CLI write was not accepted');process.stdout.write(value.id)" "$cli_write")
+
 COMPOSE_PROJECT_NAME="$compose_project" docker compose restart sidecar
 COMPOSE_PROJECT_NAME="$compose_project" docker compose up --detach --wait sidecar
 
@@ -45,4 +56,26 @@ search=$(curl --fail-with-body --silent --show-error \
   --data '{"tenant":"default","project":"compose-smoke","query":"Compose persistence","limit":5}' \
   http://127.0.0.1:18790/v1/memory/search)
 node -e "const value=JSON.parse(process.argv[1]);if(!value.items.some((item)=>item.id===process.argv[2])) throw new Error('memory did not persist after restart')" "$search" "$memory_id"
+
+cli_search=$(env \
+  AGENT_MEMORY_BACKEND=http \
+  AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790 \
+  AGENT_MEMORY_HTTP_BEARER_TOKEN="$token" \
+  AGENT_MEMORY_AGENT_ID=compose-local-cli \
+  AGENT_MEMORY_RUNTIME=compose \
+  AGENT_MEMORY_ROLE=writer \
+  AGENT_MEMORY_PROJECTS='*' \
+  node dist/cli.js memory_search '{"tenant":"default","project":"compose-smoke","query":"CLI persistence","limit":5}')
+node -e "const value=JSON.parse(process.argv[1]);if(!value.items.some((item)=>item.id===process.argv[2])) throw new Error('CLI memory was not found after restart')" "$cli_search" "$cli_memory_id"
+
+cli_read=$(env \
+  AGENT_MEMORY_BACKEND=http \
+  AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790 \
+  AGENT_MEMORY_HTTP_BEARER_TOKEN="$token" \
+  AGENT_MEMORY_AGENT_ID=compose-local-cli \
+  AGENT_MEMORY_RUNTIME=compose \
+  AGENT_MEMORY_ROLE=writer \
+  AGENT_MEMORY_PROJECTS='*' \
+  node dist/cli.js memory_get "{\"tenant\":\"default\",\"project\":\"compose-smoke\",\"id\":\"$cli_memory_id\"}")
+node -e "const value=JSON.parse(process.argv[1]);if(value.id!==process.argv[2]) throw new Error('CLI memory read returned the wrong item')" "$cli_read" "$cli_memory_id"
 echo "compose smoke ok (project=$compose_project)"
