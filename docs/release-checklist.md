@@ -128,6 +128,21 @@ git tag -a v0.3.0 -m "v0.3.0"
 - Configure npm Trusted Publishing for `zenbordercom/agents-memory-sidecar`
   and the repository's `Release` workflow before the first automated release.
   It uses GitHub OIDC, npm provenance, and the protected `npm` environment.
+- Use npm `11.15.0` or newer and an interactive npm session with account-level
+  2FA to create the relationship. The configured relationship is:
+
+  ```bash
+  npm trust github agents-memory-sidecar \
+    --file release.yml \
+    --repository zenbordercom/agents-memory-sidecar \
+    --environment npm \
+    --allow-publish \
+    --yes
+  npm trust list agents-memory-sidecar
+  ```
+
+  The trust commands are sensitive package-setting operations and may require
+  a fresh browser 2FA approval even after `npm login`.
 - The workflow publishes the package, verifies the intended dist-tag, and
   creates the GitHub Release with npm integrity metadata.
 - If Trusted Publishing is unavailable, maintainers may temporarily change the
