@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-07-19
+
+- Fixed release validation so the Compose persistence smoke uses an isolated
+  PostgreSQL host port when the Release job's pgvector service occupies 5432.
+
 ## 0.3.0 - 2026-07-19
 
 - Made the HTTP sidecar fail closed unless a valid token registry is configured;

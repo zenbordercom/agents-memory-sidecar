@@ -220,7 +220,7 @@ database setup.
 Install the current npm release:
 
 ```bash
-npm install -g agents-memory-sidecar@0.2.1
+npm install -g agents-memory-sidecar@0.3.1
 ```
 
 Verify the registry version and dist-tag:
@@ -230,18 +230,18 @@ npm view agents-memory-sidecar version
 npm view agents-memory-sidecar dist-tags.latest
 ```
 
-Both commands should print `0.2.1`.
+Both commands should print `0.3.1`.
 
 You can also install the matching GitHub release tag:
 
 ```bash
-npm install -g github:zenbordercom/agents-memory-sidecar#v0.2.1
+npm install -g github:zenbordercom/agents-memory-sidecar#v0.3.1
 ```
 
 Or install the GitHub release tarball:
 
 ```bash
-npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.2.1/agents-memory-sidecar-0.2.1.tgz
+npm install -g https://github.com/zenbordercom/agents-memory-sidecar/releases/download/v0.3.1/agents-memory-sidecar-0.3.1.tgz
 ```
 
 The CLI entry points are:
