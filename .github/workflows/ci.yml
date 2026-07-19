@@ -73,3 +73,14 @@ jobs:
           PGDATABASE: agents_memory
           PGUSER: postgres
           PGPASSWORD: postgres
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - run: npm run compose:smoke
