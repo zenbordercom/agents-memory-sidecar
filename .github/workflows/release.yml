@@ -87,14 +87,30 @@ jobs:
       # npm Trusted Publishing exchanges this workflow's OIDC token at publish
       # time. The npm package configuration is the authorization boundary.
       - run: npm publish --provenance --access public --tag "${DIST_TAG}"
-      - name: Verify registry metadata
+      - name: Wait for registry metadata
         run: |
           PACKAGE_NAME=$(node -p "require('./package.json').name")
-          test "$(npm view "${PACKAGE_NAME}@${VERSION}" version)" = "${VERSION}"
-          test "$(npm view "${PACKAGE_NAME}" dist-tags."${DIST_TAG}")" = "${VERSION}"
+          for attempt in {1..12}; do
+            published_version=$(npm view "${PACKAGE_NAME}@${VERSION}" version 2>/dev/null || true)
+            published_tag=$(npm view "${PACKAGE_NAME}" dist-tags."${DIST_TAG}" 2>/dev/null || true)
+            if [[ "${published_version}" == "${VERSION}" && "${published_tag}" == "${VERSION}" ]]; then
+              exit 0
+            fi
+            echo "Registry metadata unavailable on attempt ${attempt}/12; waiting 5 seconds"
+            sleep 5
+          done
+          echo "Registry metadata did not converge for ${PACKAGE_NAME}@${VERSION}" >&2
+          exit 1
+      - name: Prepare release assets
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
           npm view "${PACKAGE_NAME}@${VERSION}" dist.integrity > release-integrity.txt
+          mkdir -p release-artifacts
+          npm pack "${PACKAGE_NAME}@${VERSION}" --pack-destination release-artifacts
           printf 'npm package: %s@%s\n\nSHA-512 integrity:\n%s\n' "${PACKAGE_NAME}" "${VERSION}" "$(cat release-integrity.txt)" > release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
-          files: release-integrity.txt
+          files: |
+            release-integrity.txt
+            release-artifacts/*.tgz
