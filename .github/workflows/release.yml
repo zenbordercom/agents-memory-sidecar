@@ -66,6 +66,8 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: postgres
       - run: npm run compose:smoke
+        env:
+          AGENT_MEMORY_COMPOSE_POSTGRES_PORT: 15432
       - name: Resolve release metadata
         run: |
           VERSION=$(node -p "require('./package.json').version")

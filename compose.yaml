@@ -4,7 +4,7 @@ services:
     env_file:
       - ./.local/agents-memory-compose/postgres.env
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${AGENT_MEMORY_COMPOSE_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
