@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 - 2026-08-04
+
+- Updated the MCP SDK and vulnerable transitive dependencies so production and
+  development dependency audits report zero known vulnerabilities.
+- Added production and full dependency audit gates to CI and tagged releases.
+- Reconciled the v0.3 construction status and documented the verified v0.3.1
+  Trusted Publishing, provenance, integrity, and release recovery evidence.
+
 ## 0.3.1 - 2026-07-19
 
 - Fixed release validation so the Compose persistence smoke uses an isolated
