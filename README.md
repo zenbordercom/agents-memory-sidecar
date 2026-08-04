@@ -53,8 +53,10 @@ Search defaults to keyword/full-text mode. PostgreSQL deployments can enable `se
 - [Support Matrix](docs/support-matrix.md)
 - [Good First Issues](docs/good-first-issues.md)
 - [v0.2.1 Release Evidence](docs/v0.2.1-release-evidence.md)
+- [v0.3.1 Release Evidence](docs/v0.3.1-release-evidence.md)
 - [v0.3.0 CI Evidence](docs/v0.3.0-ci-evidence.md)
 - [v0.3.0 Construction Plan](docs/v0.3.0-construction-plan.md)
+- [v0.3.2 P0 Task List](docs/v0.3.2-p0-task-list.md)
 
 ## Quick Start
 

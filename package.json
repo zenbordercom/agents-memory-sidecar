@@ -1,6 +1,6 @@
 {
   "name": "agents-memory-sidecar",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local-first shared memory sidecar for MCP-capable AI agents.",
   "engines": {
     "node": ">=22"
@@ -30,6 +30,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test src/*.test.ts",
     "coverage": "c8 --all --extension .ts --include 'src/actor.ts' --include 'src/security.ts' --include 'src/http.ts' --check-coverage --lines 95 --functions 80 --reporter=text --reporter=json-summary tsx --test src/*.test.ts",
+    "audit:prod": "npm audit --omit=dev --audit-level=low",
+    "audit:all": "npm audit --audit-level=low",
     "docs:check": "node scripts/check-docs.mjs",
     "release:verify": "node scripts/verify-release.mjs",
     "package:verify": "node scripts/verify-package.mjs",
@@ -74,7 +76,7 @@
   ],
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "pg": "^8.21.0",
     "zod": "^4.4.3"
   },
