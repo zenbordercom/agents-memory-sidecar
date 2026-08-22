@@ -31,7 +31,7 @@ Use a migrated PostgreSQL 16 + pgvector database:
 ```bash
 AGENT_MEMORY_BACKEND=postgres \
 PGHOST=127.0.0.1 \
-PGDATABASE=agents_memory \
+PGDATABASE=agent_memory \
 PGUSER=postgres \
 PGPASSWORD=postgres \
 npm run search:benchmark

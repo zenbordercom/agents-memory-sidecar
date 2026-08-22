@@ -204,7 +204,7 @@ Use PostgreSQL when you want durable shared memory:
 
 ```bash
 AGENT_MEMORY_BACKEND=postgres \
-PGDATABASE=agents_memory \
+PGDATABASE=agent_memory \
 npm run db:migrate
 ```
 

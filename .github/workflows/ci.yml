@@ -39,13 +39,13 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_DB: agents_memory
+          POSTGRES_DB: agent_memory
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d agents_memory"
+          --health-cmd "pg_isready -U postgres -d agent_memory"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -57,31 +57,35 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - name: Ensure app role exists for grant regression
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d agent_memory -tc \
+            "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_memory_app') THEN CREATE ROLE agent_memory_app LOGIN; END IF; END \$\$"
       - run: npm test
         env:
           AGENT_MEMORY_TEST_PG: "1"
           PGHOST: 127.0.0.1
-          PGDATABASE: agents_memory
+          PGDATABASE: agent_memory
           PGUSER: postgres
           PGPASSWORD: postgres
       - run: npm run build
       - run: npm run db:migrate
         env:
           PGHOST: 127.0.0.1
-          PGDATABASE: agents_memory
+          PGDATABASE: agent_memory
           PGUSER: postgres
           PGPASSWORD: postgres
       - run: npm run postgres:smoke
         env:
           PGHOST: 127.0.0.1
-          PGDATABASE: agents_memory
+          PGDATABASE: agent_memory
           PGUSER: postgres
           PGPASSWORD: postgres
       - run: npm run search:benchmark
         env:
           AGENT_MEMORY_BACKEND: postgres
           PGHOST: 127.0.0.1
-          PGDATABASE: agents_memory
+          PGDATABASE: agent_memory
           PGUSER: postgres
           PGPASSWORD: postgres
 

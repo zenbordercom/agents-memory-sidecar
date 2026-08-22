@@ -80,6 +80,22 @@ test("pg store correctness regression", { skip: !guarded }, async (t) => {
     assert.equal(duplicates.rowCount, 0);
   });
 
+  await t.test("prune grant is present and survives migration replay", async () => {
+    await resetTables();
+    await migrate();
+    const role = await pool.query("SELECT to_regrole('agent_memory_app') AS reg");
+    if (!role.rows[0].reg) {
+      t.skip("agent_memory_app role not present in this cluster");
+      return;
+    }
+    const granted = () =>
+      pool.query("SELECT has_table_privilege('agent_memory_app', 'agent_observations', 'DELETE') AS ok");
+    assert.equal((await granted()).rows[0].ok, true);
+    // Replay: re-running all migrations must stay idempotent and keep the grant.
+    await migrate();
+    assert.equal((await granted()).rows[0].ok, true);
+  });
+
   await t.test("failed migration rolls back fully and records nothing", async () => {
     await resetTables();
 

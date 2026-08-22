@@ -28,8 +28,8 @@ AGENT_MEMORY_STORE_PATH=data/fake-store.json
 AGENT_MEMORY_BACKEND=postgres
 PGHOST=127.0.0.1
 PGPORT=5432
-PGDATABASE=agents_memory
-PGUSER=agents_memory_app
+PGDATABASE=agent_memory
+PGUSER=agent_memory_app
 PGPASSWORD=change-me
 ```
 

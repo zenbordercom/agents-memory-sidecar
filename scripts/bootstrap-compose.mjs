@@ -16,7 +16,7 @@ if (!existsSync(postgresEnv)) {
   const password = randomBytes(24).toString("base64url");
   writeFileSync(
     postgresEnv,
-    `POSTGRES_DB=agents_memory\nPOSTGRES_USER=agents_memory\nPOSTGRES_PASSWORD=${password}\nPGDATABASE=agents_memory\nPGUSER=agents_memory\nPGPASSWORD=${password}\n`,
+    `POSTGRES_DB=agent_memory\nPOSTGRES_USER=agent_memory\nPOSTGRES_PASSWORD=${password}\nPGDATABASE=agent_memory\nPGUSER=agent_memory\nPGPASSWORD=${password}\n`,
     { mode: 0o600 },
   );
   chmodSync(postgresEnv, 0o600);

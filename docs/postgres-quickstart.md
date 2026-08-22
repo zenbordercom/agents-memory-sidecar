@@ -37,7 +37,7 @@ Start a disposable local PostgreSQL with pgvector:
 
 ```bash
 docker run --rm --name agents-memory-pg \
-  -e POSTGRES_DB=agents_memory \
+  -e POSTGRES_DB=agent_memory \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -p 5432:5432 \
@@ -49,7 +49,7 @@ In another terminal:
 ```bash
 export PGHOST=127.0.0.1
 export PGPORT=5432
-export PGDATABASE=agents_memory
+export PGDATABASE=agent_memory
 export PGUSER=postgres
 export PGPASSWORD=postgres
 export AGENT_MEMORY_BACKEND=postgres
@@ -63,14 +63,14 @@ Create an application role and database. Choose your own password.
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agents_memory_app') THEN
-    CREATE ROLE agents_memory_app LOGIN PASSWORD 'change-me';
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_memory_app') THEN
+    CREATE ROLE agent_memory_app LOGIN PASSWORD 'change-me';
   END IF;
 END
 $$;
-SELECT 'CREATE DATABASE agents_memory OWNER agents_memory_app'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'agents_memory')\gexec
-\c agents_memory
+SELECT 'CREATE DATABASE agent_memory OWNER agent_memory_app'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'agent_memory')\gexec
+\c agent_memory
 CREATE EXTENSION IF NOT EXISTS vector;
 SQL
 ```
@@ -80,8 +80,8 @@ Set the application connection environment:
 ```bash
 export PGHOST=127.0.0.1
 export PGPORT=5432
-export PGDATABASE=agents_memory
-export PGUSER=agents_memory_app
+export PGDATABASE=agent_memory
+export PGUSER=agent_memory_app
 export PGPASSWORD=change-me
 export AGENT_MEMORY_BACKEND=postgres
 ```
