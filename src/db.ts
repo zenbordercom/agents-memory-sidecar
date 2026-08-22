@@ -2,12 +2,29 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
 
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
 export function createPgPool(): Pool {
+  // Precedence (node-postgres semantics): explicitly provided discrete
+  // parameters win over DATABASE_URL components; PG* environment variables
+  // are read by pg itself and sit between the two. Prefer DATABASE_URL for
+  // full connection specs; use the discrete params for partial overrides.
   return new Pool({
     connectionString: process.env.DATABASE_URL,
     database: process.env.PGDATABASE ?? "agent_memory",
     host: process.env.PGHOST ?? "/var/run/postgresql",
     user: process.env.PGUSER,
+    // Review finding #9: explicit pool bounds instead of library defaults.
+    // A local sidecar needs only a handful of connections; a bounded wait
+    // fails fast instead of piling up unbounded queues.
+    max: positiveIntEnv("AGENT_MEMORY_PG_POOL_MAX", 10),
+    connectionTimeoutMillis: positiveIntEnv("AGENT_MEMORY_PG_CONNECT_TIMEOUT_MS", 5_000),
+    statement_timeout: positiveIntEnv("AGENT_MEMORY_PG_STATEMENT_TIMEOUT_MS", 30_000),
   });
 }
 
