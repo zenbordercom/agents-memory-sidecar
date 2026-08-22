@@ -29,7 +29,7 @@
     "smoke": "tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test src/*.test.ts",
-    "coverage": "c8 --all --extension .ts --include 'src/actor.ts' --include 'src/security.ts' --include 'src/http.ts' --include 'src/pg-store.ts' --include 'src/db.ts' --check-coverage --lines 78 --functions 68 --reporter=text --reporter=json-summary tsx --test src/*.test.ts",
+    "coverage": "c8 --all --extension .ts --include 'src/actor.ts' --include 'src/security.ts' --include 'src/http.ts' --include 'src/pg-store.ts' --include 'src/db.ts' --include 'src/schemas.ts' --check-coverage --lines 92 --functions 85 --reporter=text --reporter=json-summary tsx --test src/*.test.ts",
     "coverage:hermetic": "c8 --all --extension .ts --include 'src/actor.ts' --include 'src/security.ts' --include 'src/http.ts' --check-coverage --lines 95 --functions 80 --reporter=text --reporter=json-summary tsx --test src/*.test.ts",
     "audit:prod": "npm audit --omit=dev --audit-level=low",
     "audit:all": "npm audit --audit-level=low",

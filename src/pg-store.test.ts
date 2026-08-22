@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -201,6 +202,250 @@ test("pg store correctness regression", { skip: !guarded }, async (t) => {
     const counts = await auditActionCounts();
     assert.equal(counts.get("memory.add"), 1);
     assert.equal(counts.get("memory.duplicate"), CONCURRENCY - 1);
+  });
+
+  await t.test("keyword search ranks, filters, and excludes dead rows", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const actor = makeActor("search");
+
+    await store.memoryAdd(actor, {
+      tenant: "t-search",
+      project: "p-search",
+      namespace: "ops",
+      kind: "note",
+      title: "Deploy runbook",
+      body: "deployment steps for the api service include rolling restart and health verification",
+      source_type: "manual",
+    });
+    await store.memoryAdd(actor, {
+      tenant: "t-search",
+      project: "p-search",
+      namespace: "archive",
+      kind: "note",
+      title: "Unrelated",
+      body: "deployment steps for the api service include rolling restart and health verification",
+      source_type: "manual",
+    });
+
+    const hit = await store.memorySearch({ tenant: "t-search", project: "p-search", query: "deployment restart", limit: 5 });
+    assert.equal(hit.length, 2, "both namespaces match without a namespace filter");
+
+    const scoped = await store.memorySearch({ tenant: "t-search", project: "p-search", query: "deployment restart", namespace: "ops", limit: 5 });
+    assert.equal(scoped.length, 1, "namespace filter must apply");
+    assert.equal(scoped[0].search_mode, "keyword");
+    assert.equal(scoped[0].title, "Deploy runbook");
+    assert.match(String(scoped[0].body_excerpt), /deployment/i);
+
+    const byKind = await store.memorySearch({ tenant: "t-search", project: "p-search", query: "deployment", kind: "incident", limit: 5 });
+    assert.equal(byKind.length, 0);
+
+    // Expired rows are invisible to search and get.
+    await pool.query(
+      `INSERT INTO memory_items (id, tenant, project, namespace, kind, body, source_type, expires_at)
+       VALUES (gen_random_uuid(), 't-search', 'p-search', 'ops', 'note', 'expired deployment secret', 'manual', now() - interval '1 day')`,
+    );
+    const afterExpiry = await store.memorySearch({ tenant: "t-search", project: "p-search", query: "expired secret", limit: 5 });
+    assert.equal(afterExpiry.length, 0);
+
+    // Soft-deleted rows are invisible too.
+    await pool.query(
+      `INSERT INTO memory_items (id, tenant, project, namespace, kind, body, source_type, deleted_at)
+       VALUES (gen_random_uuid(), 't-search', 'p-search', 'ops', 'note', 'deleted deployment note', 'manual', now())`,
+    );
+    const afterDelete = await store.memorySearch({ tenant: "t-search", project: "p-search", query: "deleted deployment", limit: 5 });
+    assert.equal(afterDelete.length, 0);
+  });
+
+  await t.test("memoryGet returns live items only", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const actor = makeActor("get");
+
+    const added = await store.memoryAdd(actor, {
+      tenant: "t-get",
+      project: "p-get",
+      namespace: "ops",
+      kind: "note",
+      body: "readable body",
+      confidence: 0.9,
+      source_type: "manual",
+    });
+
+    const item = await store.memoryGet({ tenant: "t-get", project: "p-get", id: added.id });
+    assert.ok(item);
+    assert.equal(item!.confidence, 0.9);
+    assert.ok(item!.created_at);
+
+    assert.equal(await store.memoryGet({ tenant: "t-other", project: "p-get", id: added.id }), undefined);
+    assert.equal(await store.memoryGet({ tenant: "t-get", project: "p-get", id: randomUUID() }), undefined);
+
+    await pool.query("UPDATE memory_items SET deleted_at = now() WHERE id = $1", [added.id]);
+    assert.equal(await store.memoryGet({ tenant: "t-get", project: "p-get", id: added.id }), undefined);
+  });
+
+  await t.test("contextGet honours the optional key filter", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const actor = makeActor("ctx");
+
+    for (const key of ["api-base", "db-host", "deploy-path"]) {
+      await store.contextSet(actor, { tenant: "t-ctx", project: "p-ctx", key, value: { v: key } });
+    }
+
+    const all = await store.contextGet({ tenant: "t-ctx", project: "p-ctx" });
+    assert.equal(all.length, 3);
+
+    const some = await store.contextGet({ tenant: "t-ctx", project: "p-ctx", keys: ["api-base", "deploy-path"] });
+    assert.deepEqual(some.map((c) => c.key).sort(), ["api-base", "deploy-path"]);
+  });
+
+  await t.test("semantic search matches embeddings and enforces dimension equality", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const actor = makeActor("sem");
+
+    const added = await store.memoryAdd(actor, {
+      tenant: "t-sem",
+      project: "p-sem",
+      namespace: "ops",
+      kind: "note",
+      body: "vector search probe",
+      source_type: "manual",
+    });
+    await pool.query(
+      `INSERT INTO memory_embeddings (memory_id, embedding_model, embedding, content_hash)
+       VALUES ($1, 'test-model', $2::vector, 'hash-sem')`,
+      [added.id, "[1, 0, 0, 0]"],
+    );
+
+    const hits = await store.memorySearch({
+      tenant: "t-sem",
+      project: "p-sem",
+      query: "probe",
+      mode: "semantic",
+      embedding_model: "test-model",
+      query_embedding: [1, 0.001, 0, 0],
+      limit: 5,
+    });
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].id, added.id);
+    assert.equal(hits[0].search_mode, "semantic");
+    assert.equal(hits[0].embedding_model, "test-model");
+    assert.ok(Number(hits[0].semantic_score) > 0.99);
+
+    // Dimension mismatch is filtered out, not an error.
+    const wrongDims = await store.memorySearch({
+      tenant: "t-sem",
+      project: "p-sem",
+      query: "probe",
+      mode: "semantic",
+      embedding_model: "test-model",
+      query_embedding: [1, 0],
+      limit: 5,
+    });
+    assert.equal(wrongDims.length, 0);
+
+    // Unknown model -> no rows.
+    const otherModel = await store.memorySearch({
+      tenant: "t-sem",
+      project: "p-sem",
+      query: "probe",
+      mode: "semantic",
+      embedding_model: "other-model",
+      query_embedding: [1, 0, 0, 0],
+      limit: 5,
+    });
+    assert.equal(otherModel.length, 0);
+  });
+
+  await t.test("hybrid search merges keyword and semantic scores inside scope", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const actor = makeActor("hyb");
+
+    const both = await store.memoryAdd(actor, {
+      tenant: "t-hyb",
+      project: "p-hyb",
+      namespace: "ops",
+      kind: "note",
+      title: "Cache eviction policy",
+      body: "cache eviction follows lru with ttl overrides",
+      source_type: "manual",
+    });
+    await pool.query(
+      `INSERT INTO memory_embeddings (memory_id, embedding_model, embedding, content_hash)
+       VALUES ($1, 'test-model', $2::vector, 'hash-hyb')`,
+      [both.id, "[0, 1]"],
+    );
+    const keywordOnly = await store.memoryAdd(actor, {
+      tenant: "t-hyb",
+      project: "p-hyb",
+      namespace: "ops",
+      kind: "note",
+      title: "Cache invalidation note",
+      body: "cache invalidation happens on deploy",
+      source_type: "manual",
+    });
+    // In-scope row matching NEITHER keyword nor embedding: must not appear.
+    await store.memoryAdd(actor, {
+      tenant: "t-hyb",
+      project: "p-hyb",
+      namespace: "ops",
+      kind: "note",
+      title: "Gardening schedule",
+      body: "water the plants on mondays",
+      source_type: "manual",
+    });
+
+    const results = await store.memorySearch({
+      tenant: "t-hyb",
+      project: "p-hyb",
+      query: "cache",
+      mode: "hybrid",
+      embedding_model: "test-model",
+      query_embedding: [0, 1],
+      limit: 10,
+    });
+    const ids = results.map((r) => r.id);
+    assert.ok(ids.includes(both.id), "row matching both legs must appear");
+    assert.ok(ids.includes(keywordOnly.id), "keyword-only row must still surface");
+    assert.equal(results.length, 2, "rows matching neither leg must be excluded");
+
+    const merged = results.find((r) => r.id === both.id)!;
+    assert.ok(Number(merged.keyword_score) > 0);
+    assert.ok(merged.semantic_score !== undefined);
+    assert.equal(results.find((r) => r.id === keywordOnly.id)!.semantic_score, undefined);
+    assert.equal(results[0].id, both.id, "merged score should outrank keyword-only");
+  });
+
+  await t.test("auditEvent writes a queryable record", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const actor = makeActor("audit");
+
+    await store.auditEvent({
+      tenant: actor.tenant,
+      actor,
+      action: "custom.probe",
+      target_type: "http_request",
+      project: "p-audit",
+      request_id: "req-123",
+      metadata: { via: "test" },
+    });
+
+    const row = await pool.query(
+      "SELECT action, actor, agent_id, project, request_id FROM audit_events WHERE action = 'custom.probe'",
+    );
+    assert.equal(row.rowCount, 1);
+    assert.equal(row.rows[0].actor, `${actor.runtime}:${actor.agentId}`);
+    assert.equal(row.rows[0].request_id, "req-123");
   });
 
   await t.test("audit failure rolls back the write on all three paths", async () => {
