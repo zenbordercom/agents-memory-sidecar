@@ -181,6 +181,16 @@ export class PgStore implements MemoryStore {
          AND me.embedding_model = $5
          AND vector_dims(me.embedding) = vector_dims($6::vector)
         WHERE ${filters.join(" AND ")}
+          -- Review finding #12: force the match condition INSIDE the CTE so
+          -- the scope cannot be materialized in full before ranking. Without
+          -- this, the LEFT JOIN drags every in-scope row through the sort.
+          AND (
+            ts_rank(
+              to_tsvector('simple', coalesce(mi.title, '') || ' ' || mi.body || ' ' || coalesce(mi.summary, '')),
+              plainto_tsquery('simple', $3)
+            ) > 0
+            OR me.embedding IS NOT NULL
+          )
       )
       SELECT *
       FROM ranked
