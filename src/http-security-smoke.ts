@@ -9,6 +9,7 @@ import {
   isLoopbackHost,
   listenUrl,
   resolveHttpAuthFromEnv,
+  tokenRegistryKey,
   validateTokenRegistry,
 } from "./http.js";
 import type { MemoryStore } from "./store.js";
@@ -59,7 +60,7 @@ async function main() {
       resolveHttpAuthFromEnv(
         {
           AGENT_MEMORY_HTTP_TOKENS_JSON: JSON.stringify({
-            "token-without-role": {
+            [tokenRegistryKey("token-without-role")]: {
               agentId: "a",
               runtime: "r",
               projects: ["*"],
@@ -76,7 +77,7 @@ async function main() {
   const leakedToken = "leaked-bearer-token-value-xyz";
   try {
     validateTokenRegistry({
-      [leakedToken]: { agentId: "a", runtime: "r", role: "nope", projects: ["*"] },
+      [tokenRegistryKey(leakedToken)]: { agentId: "a", runtime: "r", role: "nope", projects: ["*"] },
     });
     assert.fail("expected invalid role to throw");
   } catch (error) {
@@ -85,18 +86,28 @@ async function main() {
     assert.match(message, /entry #1|invalid role/i);
   }
 
+  // Plaintext token keys are rejected outright (hashed-key format only).
   await assertRejects(
     () =>
       validateTokenRegistry({
-        " token-with-whitespace ": {
+        "plain-bearer-token-value": { agentId: "a", runtime: "r", role: "reader", projects: ["*"] },
+      }),
+    /SHA-256 hex digest|migrate-http-tokens/,
+    "plaintext registry key rejection",
+  );
+
+  await assertRejects(
+    () =>
+      validateTokenRegistry({
+        " not-a-digest ": {
           agentId: "a",
           runtime: "r",
           role: "reader",
           projects: ["*"],
         },
       }),
-    /leading or trailing whitespace/i,
-    "whitespace bearer token rejection",
+    /SHA-256 hex digest/i,
+    "non-digest bearer token key rejection",
   );
 
   assert.equal(isLoopbackHost("127.0.0.1"), true);
@@ -115,7 +126,7 @@ async function main() {
   const storePath = join(tmp, "store.json");
   const token = "security-smoke-token-001";
   const registry = {
-    [token]: {
+    [tokenRegistryKey(token)]: {
       agentId: "security-smoke",
       runtime: "smoke",
       role: "writer" as const,
@@ -238,7 +249,7 @@ async function main() {
     );
     assert.equal(fileAuth.mode, "token_registry");
     if (fileAuth.mode === "token_registry") {
-      assert.ok(fileAuth.registry[token]);
+      assert.ok(fileAuth.registry[tokenRegistryKey(token)]);
     }
 
     // Graceful shutdown helper closes the listener (SIGINT/SIGTERM path).

@@ -28,7 +28,16 @@ trap cleanup EXIT
 
 COMPOSE_PROJECT_NAME="$compose_project" docker compose up --build --detach --wait
 
-token=$(node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('$compose_dir/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='compose-local-cli'&&a.runtime==='compose');if(!e) throw new Error('compose token missing');process.stdout.write(e[0])")
+# The registry stores SHA-256 digests, so the smoke generates its own token
+# and upserts it (the script hashes the key) before exercising the API.
+token=$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")
+COMPOSE_PROJECT_NAME="$compose_project" node scripts/upsert-http-token.mjs \
+  --file "$compose_dir/http-tokens.json" \
+  --token "$token" \
+  --agent-id compose-local-cli \
+  --runtime compose \
+  --role writer \
+  --projects '*' >/dev/null
 write=$(curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer $token" \
   --header 'content-type: application/json' \

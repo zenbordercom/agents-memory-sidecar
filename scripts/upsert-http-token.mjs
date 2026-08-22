@@ -40,7 +40,7 @@ if (args["keep-existing"] !== "true") {
   }
 }
 
-registry[token] = actor;
+registry[tokenDigest(token)] = actor;
 writeRegistry(file, registry);
 
 const tokenFingerprint = fingerprint(token);
@@ -121,6 +121,10 @@ function fingerprint(token) {
   return createHash("sha256").update(token).digest("hex").slice(0, 12);
 }
 
+function tokenDigest(token) {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
 function readRegistry(path) {
   try {
     const content = readFileSync(path, "utf8").trim();
@@ -162,5 +166,8 @@ Defaults:
   --tenant default
   --projects '*'
 
-The script prints token fingerprints only. It never prints full bearer tokens.`);
+The script prints token fingerprints only. It never prints full bearer tokens.
+
+The registry file stores SHA-256 hex digests of bearer tokens as keys, never
+the plaintext tokens themselves.`);
 }

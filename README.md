@@ -2,6 +2,11 @@
 
 Local-first shared memory for MCP-capable AI agents.
 
+> **Breaking change in 0.4.0:** token registry files now store **SHA-256 hex digests**
+> of bearer tokens as keys — plaintext tokens are rejected at startup. Convert an
+> existing file with `node scripts/migrate-http-tokens.mjs --file <path>`, or generate
+> fresh tokens with `scripts/upsert-http-token.mjs`. See the CHANGELOG for details.
+
 Agents Memory Sidecar lets tools such as Codex, Claude Code, Grok, agy, Pi, and other MCP clients share operational memory through one local sidecar. It is designed for coding agents that need to search prior context before changing a project and store durable non-secret facts after work is validated.
 
 ```text
@@ -127,25 +132,24 @@ valid token registry is configured (`AGENT_MEMORY_HTTP_TOKENS_FILE` or
 `AGENT_MEMORY_ALLOW_UNAUTHENTICATED_LOCAL=1` with a loopback bind host.
 `GET /healthz` stays unauthenticated for local liveness checks.
 
-Create a private local token registry:
+Create a private local token registry. Generate the bearer token yourself and
+pass it to the upsert helper — the registry stores only its SHA-256 digest:
 
 ```bash
 mkdir -p .local/agents-memory
+export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
 node scripts/upsert-http-token.mjs \
   --file .local/agents-memory/http-tokens.json \
+  --token "$AGENT_MEMORY_HTTP_BEARER_TOKEN" \
   --agent-id local-cli \
   --runtime local \
   --role writer \
   --projects '*'
 ```
 
-The token script prints a fingerprint only. For local development, load the
-matching `local-cli/local` token into your shell from the private registry file:
-
-```bash
-export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
-)"
+The upsert script prints a fingerprint only and never echoes the token. Keep
+`AGENT_MEMORY_HTTP_BEARER_TOKEN` exported in whichever shell calls the CLI
+below.
 ```
 
 Start the HTTP sidecar in one terminal:
@@ -157,12 +161,11 @@ AGENT_MEMORY_HTTP_PORT=18790 \
 npm run http:dev
 ```
 
-In another terminal, call it through the CLI HTTP backend:
+In another terminal, call it through the CLI HTTP backend (re-export
+`AGENT_MEMORY_HTTP_BEARER_TOKEN` with the value you generated above if you
+opened a new shell):
 
 ```bash
-export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='local-cli'&&a.runtime==='local');if(!e) throw new Error('local-cli/local token not found');console.log(e[0])"
-)"
 
 AGENT_MEMORY_BACKEND=http \
 AGENT_MEMORY_HTTP_BASE_URL=http://127.0.0.1:18790 \

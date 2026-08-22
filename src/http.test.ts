@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createHttpApp, listenUrl } from "./http.js";
+import { createHttpApp, listenUrl, tokenRegistryKey } from "./http.js";
 import { FakeStore } from "./store.js";
 import type { Actor } from "./types.js";
 
@@ -22,13 +22,13 @@ test("HTTP authentication, authorization, isolation, and input validation", asyn
     actor: fallback,
     store: new FakeStore(join(directory, "store.json")),
     tokenRegistry: {
-      writer: {
+      [tokenRegistryKey("writer")]: {
         agentId: "writer",
         runtime: "test",
         role: "writer",
         projects: ["project-a"],
       },
-      reader: {
+      [tokenRegistryKey("reader")]: {
         agentId: "reader",
         runtime: "test",
         role: "reader",

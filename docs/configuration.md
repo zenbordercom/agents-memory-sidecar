@@ -58,7 +58,8 @@ AGENT_MEMORY_HTTP_TOKENS_FILE=/etc/agents-memory/http-tokens.json
 This is a breaking change from older releases that fell back to the process
 environment actor when no registry was configured.
 
-Startup validates every registry entry: non-empty bearer token key, `agentId`,
+Startup validates every registry entry: a bearer-token key in SHA-256 hex
+ digest form (64 hex characters — plaintext tokens are rejected), `agentId`,
 `runtime`, role (`reader`|`writer`|`admin`), and a non-empty `projects` array.
 Validation errors are actionable and never include full bearer token values.
 
@@ -99,7 +100,9 @@ Roles:
 
 See `config/http-tokens.example.json`.
 
-The registry maps full bearer tokens to actor metadata. Keep the real registry outside Git and restrict file permissions.
+The registry maps SHA-256 hex digests of bearer tokens to actor metadata; the
+plaintext tokens are never written to disk. Keep the real registry outside Git and restrict file permissions. Convert an existing plaintext file with
+`node scripts/migrate-http-tokens.mjs --file <path>`.
 
 Example entry shape:
 

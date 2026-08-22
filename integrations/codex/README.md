@@ -56,14 +56,20 @@ npm explore -g agents-memory-sidecar -- node scripts/upsert-http-token.mjs \
   --projects '*'
 ```
 
-The script prints a token fingerprint only. Load the matching `codex-cli/codex`
-token from the private registry when creating the env file:
+The script prints a token fingerprint only. Generate your own bearer token and
+register it (the file stores only the SHA-256 digest, so keep the plaintext
+token in your shell/env file):
 
 ```bash
-TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='codex-cli'&&a.runtime==='codex');if(!e) throw new Error('codex-cli/codex token not found');console.log(e[0])" \
-    "$HOME/.config/agents-memory/http-tokens.json"
-)"
+TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+node scripts/upsert-http-token.mjs \
+  --file "$HOME/.config/agents-memory/http-tokens.json" \
+  --token "$TOKEN" \
+  --agent-id codex-cli \
+  --runtime codex \
+  --role writer \
+  --projects '*'
+```
 ```
 
 ## Create The Env File

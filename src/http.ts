@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { URL } from "node:url";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { actorFromEnv, canAdmin, canRead, canWrite } from "./actor.js";
 import { scanForSecrets } from "./security.js";
 import { createStoreFromEnv } from "./store-factory.js";
@@ -23,6 +23,11 @@ export type TokenRegistryEntry = {
   projects: string[];
 };
 
+/**
+ * Maps SHA-256 hex digests of bearer tokens (the canonical key form produced
+ * by {@link tokenRegistryKey}) to their actor records. Plaintext tokens are
+ * never stored; see validateTokenRegistry for the enforced key format.
+ */
 export type TokenRegistry = Record<string, TokenRegistryEntry>;
 
 export type HttpAuthState =
@@ -316,9 +321,19 @@ function loadAndValidateTokenRegistry(env: NodeJS.ProcessEnv): TokenRegistry {
   return validateTokenRegistry(parsed, source);
 }
 
+const tokenDigestPattern = /^[0-9a-f]{64}$/;
+
+/**
+ * Canonical registry key for a bearer token: the lowercase hex SHA-256 digest
+ * of the UTF-8 token bytes. Scripts and tests must store keys in this form.
+ */
+export function tokenRegistryKey(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
 export function validateTokenRegistry(parsed: unknown, source = "token registry"): TokenRegistry {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`${source} must be a JSON object mapping bearer tokens to actor records.`);
+    throw new Error(`${source} must be a JSON object mapping bearer-token digests to actor records.`);
   }
 
   const entries = Object.entries(parsed as Record<string, unknown>);
@@ -328,15 +343,19 @@ export function validateTokenRegistry(parsed: unknown, source = "token registry"
 
   const registry: TokenRegistry = {};
   let index = 0;
-  for (const [token, value] of entries) {
+  for (const [tokenDigest, value] of entries) {
     index += 1;
     const label = `entry #${index}`;
 
-    if (typeof token !== "string" || token.trim().length === 0) {
+    if (typeof tokenDigest !== "string" || tokenDigest.trim().length === 0) {
       throw new Error(`${source} ${label} has an empty bearer token key.`);
     }
-    if (token !== token.trim()) {
-      throw new Error(`${source} ${label} bearer token key must not have leading or trailing whitespace.`);
+    if (!tokenDigestPattern.test(tokenDigest.toLowerCase())) {
+      throw new Error(
+        `${source} ${label} key must be the SHA-256 hex digest of the bearer token (64 hex characters); `
+          + `plaintext tokens are not accepted. Generate keys with scripts/upsert-http-token.mjs, `
+          + `or convert an existing plaintext file with scripts/migrate-http-tokens.mjs.`,
+      );
     }
 
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -385,7 +404,7 @@ export function validateTokenRegistry(parsed: unknown, source = "token registry"
       throw new Error(`${source} ${label} (agentId=${agentId}) has invalid workspace.`);
     }
 
-    registry[token] = {
+    registry[tokenDigest.toLowerCase()] = {
       tenant: typeof tenant === "string" ? tenant : undefined,
       agentId,
       runtime,
@@ -789,17 +808,22 @@ function actorForRequest(request: IncomingMessage, auth: HttpAuthState): Actor |
     return undefined;
   }
 
-  const entry = auth.registry[token];
-  if (!entry) {
-    return undefined;
+  // Hash the presented token and compare against every stored digest with
+  // timingSafeEqual over fixed-length buffers - object property lookup is NOT
+  // constant-time, so an explicit comparison is required for the guarantee.
+  const providedDigest = createHash("sha256").update(token, "utf8").digest();
+  for (const [key, entry] of Object.entries(auth.registry)) {
+    const expectedDigest = Buffer.from(key, "hex");
+    if (expectedDigest.length === providedDigest.length && timingSafeEqual(expectedDigest, providedDigest)) {
+      return {
+        tenant: entry.tenant ?? auth.fallback.tenant,
+        agentId: entry.agentId,
+        runtime: entry.runtime,
+        workspace: entry.workspace ?? auth.fallback.workspace,
+        role: entry.role,
+        projects: entry.projects,
+      };
+    }
   }
-
-  return {
-    tenant: entry.tenant ?? auth.fallback.tenant,
-    agentId: entry.agentId,
-    runtime: entry.runtime,
-    workspace: entry.workspace ?? auth.fallback.workspace,
-    role: entry.role,
-    projects: entry.projects,
-  };
+  return undefined;
 }

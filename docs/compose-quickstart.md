@@ -50,12 +50,20 @@ docker compose logs sidecar
 
 ## Write And Search
 
-Load the local token into a shell variable without printing it:
+Generate your own bearer token and register it (the compose bootstrap creates
+the registry file with hashed keys only, so the plaintext token only exists in
+your shell):
 
 ```bash
-export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(
-  node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('.local/agents-memory-compose/http-tokens.json','utf8'));const e=Object.entries(r).find(([,a])=>a.agentId==='compose-local-cli'&&a.runtime==='compose');if(!e) throw new Error('compose token missing');process.stdout.write(e[0])"
-)"
+export AGENT_MEMORY_HTTP_BEARER_TOKEN="$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+node scripts/upsert-http-token.mjs \
+  --file .local/agents-memory-compose/http-tokens.json \
+  --token "$AGENT_MEMORY_HTTP_BEARER_TOKEN" \
+  --agent-id compose-local-cli \
+  --runtime compose \
+  --role writer \
+  --projects '*'
+```
 ```
 
 Then use the HTTP CLI backend:
