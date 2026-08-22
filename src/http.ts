@@ -417,6 +417,42 @@ export function validateTokenRegistry(parsed: unknown, source = "token registry"
   return registry;
 }
 
+
+async function authorize(
+  store: MemoryStore,
+  response: ServerResponse,
+  input: {
+    actor: Actor;
+    tenant: string;
+    project: string;
+    role: "read" | "write" | "admin";
+    operation: string;
+    method: string;
+    path: string;
+    /** Extra audit metadata (e.g. the context key) appended to denial records. */
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const { actor, tenant, project } = input;
+  const allowed =
+    input.role === "read"
+      ? canRead(actor, tenant, project)
+      : input.role === "write"
+        ? canWrite(actor, tenant, project)
+        : canAdmin(actor, tenant, project);
+  if (allowed) return;
+
+  setLogContext(response, { error: "permission_denied" });
+  await auditHttp(store, response, {
+    actor,
+    tenant,
+    project,
+    action: "auth.permission_denied",
+    metadata: { method: input.method, path: input.path, operation: input.operation, ...input.metadata },
+  });
+  throw new HttpRequestError(403, "permission_denied");
+}
+
 async function handleRequest(
   auth: HttpAuthState,
   store: MemoryStore,
@@ -447,17 +483,7 @@ async function handleRequest(
     const tenant = stringOrDefault(input.tenant, actor.tenant);
     const project = requiredString(input.project, "project");
     setLogContext(response, { actor, tenant, project });
-    if (!canRead(actor, tenant, project)) {
-      setLogContext(response, { error: "permission_denied" });
-      await auditHttp(store, response, {
-        actor,
-        tenant,
-        project,
-        action: "auth.permission_denied",
-        metadata: { method, path: url.pathname, operation: "memory.search" },
-      });
-      return send(response, 403, { error: "permission_denied" });
-    }
+    await authorize(store, response, { actor, tenant, project, role: "read", operation: "memory.search", method, path: url.pathname });
     return send(response, 200, {
       items: await store.memorySearch({
         tenant,
@@ -478,17 +504,7 @@ async function handleRequest(
     const tenant = stringOrDefault(url.searchParams.get("tenant"), actor.tenant);
     const project = requiredString(url.searchParams.get("project"), "project");
     setLogContext(response, { actor, tenant, project });
-    if (!canRead(actor, tenant, project)) {
-      setLogContext(response, { error: "permission_denied" });
-      await auditHttp(store, response, {
-        actor,
-        tenant,
-        project,
-        action: "auth.permission_denied",
-        metadata: { method, path: url.pathname, operation: "memory.get" },
-      });
-      return send(response, 403, { error: "permission_denied" });
-    }
+    await authorize(store, response, { actor, tenant, project, role: "read", operation: "memory.get", method, path: url.pathname });
     const id = memoryGetMatch[1];
     if (!isUuid(id)) {
       setLogContext(response, { error: "invalid_memory_id" });
@@ -503,17 +519,7 @@ async function handleRequest(
     const tenant = stringOrDefault(input.tenant, actor.tenant);
     const project = requiredString(input.project, "project");
     setLogContext(response, { actor, tenant, project });
-    if (!canWrite(actor, tenant, project)) {
-      setLogContext(response, { error: "permission_denied" });
-      await auditHttp(store, response, {
-        actor,
-        tenant,
-        project,
-        action: "auth.permission_denied",
-        metadata: { method, path: url.pathname, operation: "memory.add" },
-      });
-      return send(response, 403, { error: "permission_denied" });
-    }
+    await authorize(store, response, { actor, tenant, project, role: "write", operation: "memory.add", method, path: url.pathname });
     const warnings = scanForSecrets(input);
     if (warnings.length) {
       setLogContext(response, { error: warnings.join(",") });
@@ -549,17 +555,7 @@ async function handleRequest(
     const tenant = stringOrDefault(url.searchParams.get("tenant"), actor.tenant);
     const project = requiredString(url.searchParams.get("project"), "project");
     setLogContext(response, { actor, tenant, project });
-    if (!canRead(actor, tenant, project)) {
-      setLogContext(response, { error: "permission_denied" });
-      await auditHttp(store, response, {
-        actor,
-        tenant,
-        project,
-        action: "auth.permission_denied",
-        metadata: { method, path: url.pathname, operation: "context.get" },
-      });
-      return send(response, 403, { error: "permission_denied" });
-    }
+    await authorize(store, response, { actor, tenant, project, role: "read", operation: "context.get", method, path: url.pathname });
     return send(response, 200, {
       project,
       contexts: await store.contextGet({
@@ -576,22 +572,16 @@ async function handleRequest(
     const tenant = stringOrDefault(input.tenant, actor.tenant);
     const project = requiredString(input.project, "project");
     setLogContext(response, { actor, tenant, project });
-    if (!canAdmin(actor, tenant, project)) {
-      setLogContext(response, { error: "permission_denied" });
-      await auditHttp(store, response, {
-        actor,
-        tenant,
-        project,
-        action: "auth.permission_denied",
-        metadata: {
-          method,
-          path: url.pathname,
-          operation: "context.set",
-          key: decodeURIComponent(contextSetMatch[1]),
-        },
-      });
-      return send(response, 403, { error: "permission_denied" });
-    }
+    await authorize(store, response, {
+      actor,
+      tenant,
+      project,
+      role: "admin",
+      operation: "context.set",
+      method,
+      path: url.pathname,
+      metadata: { key: decodeURIComponent(contextSetMatch[1]) },
+    });
     const warnings = scanForSecrets(input);
     if (warnings.length) {
       setLogContext(response, { error: warnings.join(",") });
@@ -623,17 +613,7 @@ async function handleRequest(
     const tenant = stringOrDefault(input.tenant, actor.tenant);
     const project = requiredString(input.project, "project");
     setLogContext(response, { actor, tenant, project });
-    if (!canWrite(actor, tenant, project)) {
-      setLogContext(response, { error: "permission_denied" });
-      await auditHttp(store, response, {
-        actor,
-        tenant,
-        project,
-        action: "auth.permission_denied",
-        metadata: { method, path: url.pathname, operation: "observation.add" },
-      });
-      return send(response, 403, { error: "permission_denied" });
-    }
+    await authorize(store, response, { actor, tenant, project, role: "write", operation: "observation.add", method, path: url.pathname });
     const warnings = scanForSecrets(input);
     if (warnings.length) {
       setLogContext(response, { error: warnings.join(",") });
