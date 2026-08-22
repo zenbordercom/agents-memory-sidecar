@@ -110,11 +110,7 @@ export function resolveHttpAuthFromEnv(
   );
 }
 
-export function createHttpApp(
-  actorOrOptions?: Actor | CreateHttpAppOptions,
-  storeArg?: MemoryStore,
-): Server {
-  const options = normalizeCreateOptions(actorOrOptions, storeArg);
+export function createHttpApp(options: CreateHttpAppOptions = {}): Server {
   const store = options.store ?? createStoreFromEnv();
   const fallbackActor = options.actor ?? actorFromEnv(options.env ?? process.env);
   const auth = resolveCreateAuth(options, fallbackActor);
@@ -247,42 +243,6 @@ export function attachGracefulShutdown(server: Server, store?: MemoryStore): () 
 export function listenUrl(server: ReturnType<typeof createServer>) {
   const address = server.address() as AddressInfo;
   return `http://127.0.0.1:${address.port}`;
-}
-
-function normalizeCreateOptions(
-  actorOrOptions?: Actor | CreateHttpAppOptions,
-  storeArg?: MemoryStore,
-): CreateHttpAppOptions {
-  if (!actorOrOptions) {
-    return storeArg ? { store: storeArg } : {};
-  }
-
-  if (isActor(actorOrOptions)) {
-    return { actor: actorOrOptions, store: storeArg };
-  }
-
-  if (storeArg) {
-    return { ...actorOrOptions, store: actorOrOptions.store ?? storeArg };
-  }
-
-  return actorOrOptions;
-}
-
-function isActor(value: Actor | CreateHttpAppOptions): value is Actor {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "agentId" in value &&
-    "runtime" in value &&
-    "role" in value &&
-    "projects" in value &&
-    !("allowUnauthenticatedForTests" in value) &&
-    !("tokenRegistry" in value) &&
-    !("auth" in value) &&
-    !("store" in value) &&
-    !("host" in value) &&
-    !("env" in value)
-  );
 }
 
 function resolveCreateAuth(options: CreateHttpAppOptions, fallbackActor: Actor): HttpAuthState {
@@ -428,6 +388,7 @@ export function validateTokenRegistry(parsed: unknown, source = "token registry"
 
   return registry;
 }
+
 
 
 async function authorize(
@@ -738,9 +699,20 @@ async function readJson(request: IncomingMessage): Promise<Record<string, unknow
   }
 }
 
+// Review finding #16: pretty JSON wastes bandwidth for machine polling.
+// Default stays at 2-space indent for compatibility; set
+// AGENT_MEMORY_HTTP_JSON_INDENT=0 for compact output.
+let jsonIndent: number | undefined;
+try {
+  const raw = Number(process.env.AGENT_MEMORY_HTTP_JSON_INDENT ?? "2");
+  jsonIndent = Number.isInteger(raw) && raw >= 0 ? raw : 2;
+} catch {
+  jsonIndent = 2;
+}
+
 function send(response: ServerResponse, status: number, value: unknown) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-  response.end(`${JSON.stringify(value, null, 2)}\n`);
+  response.end(JSON.stringify(value, null, jsonIndent) + "\n");
 }
 
 function requiredString(value: unknown, name: string): string {
