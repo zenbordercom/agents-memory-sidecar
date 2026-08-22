@@ -37,6 +37,21 @@ Use TCP localhost for password-based local deployments. If you prefer Unix
 sockets, configure PostgreSQL `pg_hba.conf` for the runtime user and omit
 `PGPASSWORD` when using peer authentication.
 
+### PostgreSQL Connection Pool
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `DATABASE_URL` | – | Full connection spec; discrete `PG*` variables override individual components |
+| `AGENT_MEMORY_PG_POOL_MAX` | `10` | Maximum pooled connections |
+| `AGENT_MEMORY_PG_CONNECT_TIMEOUT_MS` | `5000` | Fail-fast bound for acquiring a connection |
+| `AGENT_MEMORY_PG_STATEMENT_TIMEOUT_MS` | `30000` | Server-side statement timeout |
+
+### HTTP Output
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `AGENT_MEMORY_HTTP_JSON_INDENT` | `2` | Response JSON indent; set `0` for compact output when machines poll frequently |
+
 ## HTTP Sidecar
 
 ```bash
