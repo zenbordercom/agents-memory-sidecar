@@ -19,17 +19,9 @@ fi
 
 COMPOSE_PROJECT_NAME="$compose_project" node scripts/bootstrap-compose.mjs "$compose_dir"
 
-cleanup() {
-  if [[ $keep -eq 0 ]]; then
-    COMPOSE_PROJECT_NAME="$compose_project" docker compose down --volumes --remove-orphans
-  fi
-}
-trap cleanup EXIT
-
-COMPOSE_PROJECT_NAME="$compose_project" docker compose up --build --detach --wait
-
 # The registry stores SHA-256 digests, so the smoke generates its own token
-# and upserts it (the script hashes the key) before exercising the API.
+# and upserts it (the script hashes the key) BEFORE the stack starts - the
+# sidecar loads the registry once at startup.
 token=$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")
 COMPOSE_PROJECT_NAME="$compose_project" node scripts/upsert-http-token.mjs \
   --file "$compose_dir/http-tokens.json" \
@@ -38,6 +30,15 @@ COMPOSE_PROJECT_NAME="$compose_project" node scripts/upsert-http-token.mjs \
   --runtime compose \
   --role writer \
   --projects '*' >/dev/null
+
+cleanup() {
+  if [[ $keep -eq 0 ]]; then
+    COMPOSE_PROJECT_NAME="$compose_project" docker compose down --volumes --remove-orphans
+  fi
+}
+trap cleanup EXIT
+
+COMPOSE_PROJECT_NAME="$compose_project" docker compose up --build --detach --wait
 write=$(curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer $token" \
   --header 'content-type: application/json' \
