@@ -42,8 +42,26 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run docs:check
+      - name: Ensure app role and disposable pg-test database exist
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d agent_memory -tc \
+            "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_memory_app') THEN CREATE ROLE agent_memory_app LOGIN; END IF; END \$\$"
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -c "CREATE DATABASE sidecar_pg_test" || true
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d sidecar_pg_test -c "CREATE EXTENSION IF NOT EXISTS vector"
       - run: npm test
+        env:
+          AGENT_MEMORY_TEST_PG: "1"
+          PGHOST: 127.0.0.1
+          PGDATABASE: sidecar_pg_test
+          PGUSER: postgres
+          PGPASSWORD: postgres
       - run: npm run coverage
+        env:
+          AGENT_MEMORY_TEST_PG: "1"
+          PGHOST: 127.0.0.1
+          PGDATABASE: sidecar_pg_test
+          PGUSER: postgres
+          PGPASSWORD: postgres
       - run: npm run smoke
       - run: npm run http:smoke
       - run: npm run http:bridge-smoke
