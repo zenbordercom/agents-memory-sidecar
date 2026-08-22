@@ -43,7 +43,9 @@ if (args["keep-existing"] !== "true") {
 registry[tokenDigest(token)] = actor;
 writeRegistry(file, registry);
 
-const tokenFingerprint = fingerprint(token);
+// Fingerprint the stored digest key so creation and --remove-fingerprint
+// share a consistent domain.
+const tokenFingerprint = fingerprint(tokenDigest(token));
 console.log(JSON.stringify({ fingerprint: tokenFingerprint, actor }, null, 2));
 
 if (args["print-token"] === "true") {

@@ -150,7 +150,6 @@ node scripts/upsert-http-token.mjs \
 The upsert script prints a fingerprint only and never echoes the token. Keep
 `AGENT_MEMORY_HTTP_BEARER_TOKEN` exported in whichever shell calls the CLI
 below.
-```
 
 Start the HTTP sidecar in one terminal:
 

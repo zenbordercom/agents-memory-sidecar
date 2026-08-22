@@ -108,7 +108,7 @@ Example entry shape:
 
 ```json
 {
-  "replace-with-random-token": {
+  "<sha-256-hex-digest-of-the-bearer-token>": {
     "tenant": "default",
     "agentId": "codex-cli",
     "runtime": "codex",

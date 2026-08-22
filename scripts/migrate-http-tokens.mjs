@@ -66,6 +66,9 @@ renameSync(temp, file);
 
 console.log(JSON.stringify({ file, backup, converted, alreadyHashed, changed: true }, null, 2));
 console.error("Plaintext tokens were removed. Distribute tokens to clients from your existing records; they are not recoverable from the file.");
+if (alreadyHashed > 0) {
+  console.error(`Note: ${alreadyHashed} key(s) already looked like SHA-256 digests and were preserved as-is. If one of those was actually a plaintext token that happens to be 64 hex chars, it will no longer authenticate - re-register it with scripts/upsert-http-token.mjs.`);
+}
 
 function parseArgs(values) {
   const parsed = {};
