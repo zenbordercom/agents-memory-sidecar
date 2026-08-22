@@ -119,7 +119,8 @@ async function main() {
     }),
   );
   assert.equal(rejectedSecret.accepted, false);
-  assert.deepEqual(rejectedSecret.warnings, ["suspected_secret"]);
+  assert.equal(rejectedSecret.warnings.length, 1);
+  assert.match(String(rejectedSecret.warnings[0]), /^suspected_secret:/);
 
   const search = parseToolJson(
     await client.callTool({
