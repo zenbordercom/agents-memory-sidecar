@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { canAdmin, canRead, canWrite } from "./actor.js";
@@ -13,10 +14,15 @@ const sourceType = z.enum(["user", "agent", "file", "command", "url", "system", 
 const metadata = z.record(z.string(), z.unknown()).default({});
 const searchMode = z.enum(["keyword", "semantic", "hybrid"]);
 
+// Single source of truth for the declared version: resolve the package.json that
+// ships with this build (works unchanged from src/ via tsx and from dist/).
+const require = createRequire(import.meta.url);
+const declaredVersion = (require("../package.json") as { version: string }).version;
+
 export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServer {
   const server = new McpServer({
     name: "agents-memory-sidecar",
-    version: "0.2.1",
+    version: declaredVersion,
   });
 
   server.registerTool(
