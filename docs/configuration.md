@@ -96,6 +96,24 @@ Roles:
 - `writer`: reader plus memory/observation writes
 - `admin`: writer plus project context writes
 
+## Shared Field Constraints
+
+Both entry points (MCP tools and HTTP endpoints) validate payloads against the
+same field-level contracts in `src/schemas.ts`. Violations return an error
+(HTTP: `400 invalid_request`; MCP: a schema validation error):
+
+| Field | Constraint |
+|-------|------------|
+| `body` (memory) | 1–64,000 chars |
+| `summary` (memory) | 1–4,000 chars when present |
+| `observation` | 1–32,000 chars |
+| `confidence` | finite number in [0, 1] |
+| `limit` (search) | integer 1–20 (default 5) |
+| `ttl_days` | integer 1–180 (default 30) |
+| `mode` (search) | `keyword` \| `semantic` \| `hybrid` |
+| `source_type` | closed enum (see `src/schemas.ts`) |
+| `query_embedding` | non-empty array of finite numbers |
+
 ## Token Registry
 
 See `config/http-tokens.example.json`.

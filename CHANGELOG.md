@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 - 2026-08-22
+
+- HTTP request validation now derives from the same shared zod contracts as
+  the MCP entry point (`src/schemas.ts`): length caps on memory bodies,
+  summaries and observations; confidence restricted to finite [0, 1]; limits
+  to integer 1..20; TTL to whole days 1..180; embedding vectors must contain
+  finite numbers. Violations return `400 invalid_request` (the historical
+  `invalid_search_mode` code is preserved for search modes). Previously some
+  malformed optional values were silently dropped.
+- Extracted the repeated per-endpoint authorization boilerplate into a single
+  `authorize()` helper that writes the denial audit record and throws
+  HttpRequestError(403); new endpoints can no longer omit the audit.
+- Expanded the real-PostgreSQL regression suite to the read paths: keyword /
+  semantic / hybrid search, expiry and soft-delete exclusion, tenant
+  isolation, context key filters, and audit records. Coverage gate raised to
+  lines >= 92 / functions >= 85 (measured baseline 95.97% / 89.39%).
+
 ## 0.4.0 - 2026-08-22
 
 - **Breaking:** token registry files now map SHA-256 hex digests of bearer
