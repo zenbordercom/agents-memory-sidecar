@@ -43,6 +43,7 @@ async function main() {
     assert.deepEqual(toolNames, [
       "agent_observation_add",
       "memory_add",
+      "memory_delete",
       "memory_get",
       "memory_search",
       "project_context_get",
