@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { Actor, MemoryItem, ProjectContext, SourceType } from "./types.js";
 import type { MemorySearchInput, MemoryStore, SearchMode } from "./store.js";
+
+// Anything queryable with parameterized SQL: the pool itself or a leased client.
+type Queryer = Pick<Pool, "query">;
 
 export class PgStore implements MemoryStore {
   constructor(private readonly pool: Pool) {}
@@ -248,48 +251,65 @@ export class PgStore implements MemoryStore {
     // on tenant/project/namespace/content_hash WHERE content_hash IS NOT NULL
     // AND deleted_at IS NULL); a bare DO NOTHING would not hit the arbiter.
     // On conflict the winner row may itself be soft-deleted concurrently, so
-    // retry a bounded number of times before giving up.
+    // retry a bounded number of times before giving up. Insert + audit share
+    // one client transaction so neither lands without the other.
     for (let attempt = 0; attempt < 3; attempt++) {
-      const inserted = await this.pool.query(
-        `
-        INSERT INTO memory_items (
-          id, tenant, project, namespace, kind, title, body, summary, metadata, content_hash,
-          source_type, source_ref, agent_id, runtime, workspace, visibility, importance, confidence
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'team', 0, $16)
-        ON CONFLICT (tenant, project, namespace, content_hash)
-          WHERE content_hash IS NOT NULL AND deleted_at IS NULL
-        DO NOTHING
-        RETURNING id
-        `,
-        [
-          randomUUID(),
-          input.tenant,
-          input.project,
-          input.namespace,
-          input.kind,
-          input.title,
-          input.body,
-          input.summary,
-          input.metadata ?? {},
-          contentHash,
-          input.source_type,
-          input.source_ref,
-          actor.agentId,
-          actor.runtime,
-          actor.workspace,
-          input.confidence,
-        ],
-      );
+      const client = await this.pool.connect();
+      try {
+        await client.query("BEGIN");
+        const inserted = await client.query(
+          `
+          INSERT INTO memory_items (
+            id, tenant, project, namespace, kind, title, body, summary, metadata, content_hash,
+            source_type, source_ref, agent_id, runtime, workspace, visibility, importance, confidence
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'team', 0, $16)
+          ON CONFLICT (tenant, project, namespace, content_hash)
+            WHERE content_hash IS NOT NULL AND deleted_at IS NULL
+          DO NOTHING
+          RETURNING id
+          `,
+          [
+            randomUUID(),
+            input.tenant,
+            input.project,
+            input.namespace,
+            input.kind,
+            input.title,
+            input.body,
+            input.summary,
+            input.metadata ?? {},
+            contentHash,
+            input.source_type,
+            input.source_ref,
+            actor.agentId,
+            actor.runtime,
+            actor.workspace,
+            input.confidence,
+          ],
+        );
 
-      if (inserted.rows[0]) {
-        const id = inserted.rows[0].id as string;
-        await this.audit(actor, "memory.add", "memory_item", id, input.project, {
-          namespace: input.namespace,
-          kind: input.kind,
-          source_type: input.source_type,
-        });
-        return { id, accepted: true, warnings: [] };
+        if (inserted.rows[0]) {
+          const id = inserted.rows[0].id as string;
+          await this.audit(actor, "memory.add", "memory_item", id, input.project, {
+            namespace: input.namespace,
+            kind: input.kind,
+            source_type: input.source_type,
+          }, client);
+          await client.query("COMMIT");
+          return { id, accepted: true, warnings: [] };
+        }
+
+        await client.query("ROLLBACK");
+      } catch (error) {
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          // Transaction already aborted by the failure.
+        }
+        throw error;
+      } finally {
+        client.release();
       }
 
       // Lost the insert race: report the winner's id as a duplicate.
@@ -357,29 +377,45 @@ export class PgStore implements MemoryStore {
       note?: string;
     },
   ) {
-    const id = randomUUID();
-    const result = await this.pool.query(
-      `
-      INSERT INTO project_contexts (id, tenant, project, key, value, source_ref, updated_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (tenant, project, key)
-      DO UPDATE SET value = EXCLUDED.value, source_ref = EXCLUDED.source_ref, updated_by = EXCLUDED.updated_by, updated_at = now()
-      RETURNING id, key, updated_at
-      `,
-      [id, input.tenant, input.project, input.key, input.value, input.source_ref, actor.agentId],
-    );
+    // Upsert + audit share one client transaction: an audit failure rolls the
+    // context write back instead of leaving data that reports as a 500.
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `
+        INSERT INTO project_contexts (id, tenant, project, key, value, source_ref, updated_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (tenant, project, key)
+        DO UPDATE SET value = EXCLUDED.value, source_ref = EXCLUDED.source_ref, updated_by = EXCLUDED.updated_by, updated_at = now()
+        RETURNING id, key, updated_at
+        `,
+        [randomUUID(), input.tenant, input.project, input.key, input.value, input.source_ref, actor.agentId],
+      );
 
-    await this.audit(actor, "context.set", "project_context", result.rows[0].id, input.project, {
-      key: input.key,
-      note: input.note,
-    });
+      await this.audit(actor, "context.set", "project_context", result.rows[0].id, input.project, {
+        key: input.key,
+        note: input.note,
+      }, client);
 
-    return {
-      key: result.rows[0].key,
-      accepted: true,
-      warnings: [],
-      updated_at: toIso(result.rows[0].updated_at),
-    };
+      await client.query("COMMIT");
+
+      return {
+        key: result.rows[0].key,
+        accepted: true,
+        warnings: [],
+        updated_at: toIso(result.rows[0].updated_at),
+      };
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // Transaction already aborted by the failure.
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async observationAdd(
@@ -394,28 +430,44 @@ export class PgStore implements MemoryStore {
     },
   ) {
     const id = randomUUID();
-    await this.pool.query(
-      `
-      INSERT INTO agent_observations (
-        id, tenant, project, agent_id, runtime, session_id, observation, metadata, expires_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now() + ($9::int * interval '1 day'))
-      `,
-      [
-        id,
-        input.tenant,
-        input.project,
-        actor.agentId,
-        actor.runtime,
-        input.session_id,
-        input.observation,
-        input.metadata ?? {},
-        input.ttl_days,
-      ],
-    );
-    await this.audit(actor, "observation.add", "agent_observation", id, input.project, {
-      ttl_days: input.ttl_days,
-    });
+    // Insert + audit share one client transaction (same rationale as
+    // memoryAdd/contextSet).
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `
+        INSERT INTO agent_observations (
+          id, tenant, project, agent_id, runtime, session_id, observation, metadata, expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now() + ($9::int * interval '1 day'))
+        `,
+        [
+          id,
+          input.tenant,
+          input.project,
+          actor.agentId,
+          actor.runtime,
+          input.session_id,
+          input.observation,
+          input.metadata ?? {},
+          input.ttl_days,
+        ],
+      );
+      await this.audit(actor, "observation.add", "agent_observation", id, input.project, {
+        ttl_days: input.ttl_days,
+      }, client);
+      await client.query("COMMIT");
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // Transaction already aborted by the failure.
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
 
     return { id, accepted: true, warnings: [] };
   }
@@ -427,6 +479,7 @@ export class PgStore implements MemoryStore {
     targetId: string,
     project: string,
     metadata: Record<string, unknown>,
+    executor: Queryer = this.pool,
   ) {
     await this.auditEvent({
       tenant: actor.tenant,
@@ -436,7 +489,7 @@ export class PgStore implements MemoryStore {
       target_id: targetId,
       project,
       metadata,
-    });
+    }, executor);
   }
 
   async auditEvent(input: {
@@ -448,8 +501,8 @@ export class PgStore implements MemoryStore {
     project?: string;
     request_id?: string;
     metadata?: Record<string, unknown>;
-  }) {
-    await this.pool.query(
+  }, executor: Queryer = this.pool) {
+    await executor.query(
       `
       INSERT INTO audit_events (
         id, tenant, actor, agent_id, runtime, action, target_type, target_id, project, request_id, metadata

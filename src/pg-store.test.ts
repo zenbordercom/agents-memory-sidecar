@@ -202,4 +202,90 @@ test("pg store correctness regression", { skip: !guarded }, async (t) => {
     assert.equal(counts.get("memory.add"), 1);
     assert.equal(counts.get("memory.duplicate"), CONCURRENCY - 1);
   });
+
+  await t.test("audit failure rolls back the write on all three paths", async () => {
+    await resetTables();
+    await migrate();
+
+    // Wrapper that fails the next INSERT INTO audit_events when armed, then
+    // passes everything else through to the real pool (clients included).
+    function makeAuditFailingPool(real: typeof pool) {
+      let failNextAuditInsert = false;
+      const wrapQuery =
+        <Q extends { query(sql: string, params?: unknown[]): Promise<unknown> }>(underlying: Q): Q =>
+          new Proxy(underlying, {
+            get(target, prop, receiver) {
+              if (prop === "query") {
+                return async (sql: string, params?: unknown[]) => {
+                  if (failNextAuditInsert && sql.includes("INSERT INTO audit_events")) {
+                    failNextAuditInsert = false;
+                    throw new Error("simulated audit outage");
+                  }
+                  return (target.query as (s: string, p?: unknown[]) => Promise<unknown>)(sql, params);
+                };
+              }
+              return Reflect.get(target, prop, receiver);
+            },
+          }) as Q;
+
+      return {
+        query: wrapQuery(real).query.bind(wrapQuery(real)),
+        connect: async () => wrapQuery(await real.connect()),
+        end: () => real.end(),
+        armAuditFailure: () => {
+          failNextAuditInsert = true;
+        },
+      };
+    }
+
+    const flaky = makeAuditFailingPool(pool);
+    const store = new PgStore(flaky as unknown as typeof pool);
+    const actor = makeActor("txn");
+
+    flaky.armAuditFailure();
+    await assert.rejects(() =>
+      store.contextSet(actor, { tenant: actor.tenant, project: "p-txn", key: "k", value: { v: 1 } }),
+    );
+    const contexts = await pool.query(
+      "SELECT count(*)::int AS n FROM project_contexts WHERE tenant = $1 AND project = $2",
+      [actor.tenant, "p-txn"],
+    );
+    assert.equal(contexts.rows[0].n, 0, "context write must roll back when audit fails");
+
+    flaky.armAuditFailure();
+    await assert.rejects(() =>
+      store.observationAdd(actor, {
+        tenant: actor.tenant,
+        project: "p-txn",
+        observation: "should not persist",
+        ttl_days: 1,
+      }),
+    );
+    const observations = await pool.query(
+      "SELECT count(*)::int AS n FROM agent_observations WHERE tenant = $1 AND project = $2",
+      [actor.tenant, "p-txn"],
+    );
+    assert.equal(observations.rows[0].n, 0, "observation write must roll back when audit fails");
+
+    flaky.armAuditFailure();
+    await assert.rejects(() =>
+      store.memoryAdd(actor, {
+        tenant: actor.tenant,
+        project: "p-txn",
+        namespace: "ops",
+        kind: "note",
+        body: "should not persist",
+        source_type: "manual",
+      }),
+    );
+    const memories = await pool.query(
+      "SELECT count(*)::int AS n FROM memory_items WHERE tenant = $1 AND project = $2",
+      [actor.tenant, "p-txn"],
+    );
+    assert.equal(memories.rows[0].n, 0, "memory write must roll back when audit fails");
+
+    // After the injected failure is consumed, writes succeed end-to-end.
+    const ok = await store.contextSet(actor, { tenant: actor.tenant, project: "p-txn", key: "k", value: { v: 2 } });
+    assert.equal(ok.accepted, true);
+  });
 });
