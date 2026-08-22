@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 - 2026-08-22
+
+- **Breaking:** `createHttpApp` no longer accepts a positional `Actor`;
+  pass `{ actor, store }` options instead.
+- **New:** admin-only soft delete. MCP gains a `memory_delete` tool and HTTP
+  gains `DELETE /v1/memory/:id`; both write a `memory.delete` audit event.
+  Soft-deleted rows free their content-hash slot, so identical content can be
+  re-added.
+- Secret scanning now attributes matches by rule name
+  (`suspected_secret:<rule>`), adds AWS access key id, JWT, Slack token and
+  Telegram bot token patterns, and whitelists benign environment keys for the
+  high-false-positive env-assignment rule.
+- Hybrid search applies its keyword/embedding match condition inside the CTE,
+  preventing scope-wide row materialization before ranking.
+- The PostgreSQL pool is explicitly bounded (`AGENT_MEMORY_PG_POOL_MAX`,
+  `_CONNECT_TIMEOUT_MS`, `_STATEMENT_TIMEOUT_MS`); response JSON indent is
+  configurable via `AGENT_MEMORY_HTTP_JSON_INDENT`.
+- ANN indexing for semantic search was evaluated and deliberately deferred;
+  see docs/limitations.md for the rationale and revisit criteria.
+
 ## 0.5.0 - 2026-08-22
 
 - HTTP request validation now derives from the same shared zod contracts as
