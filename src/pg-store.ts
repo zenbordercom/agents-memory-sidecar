@@ -233,6 +233,85 @@ export class PgStore implements MemoryStore {
     },
   ) {
     const contentHash = hashContent(input.title, input.summary, input.body);
+
+    // Fast path: pre-existing duplicate without racing another writer.
+    const existingId = await this.findActiveMemoryId(input.tenant, input.project, input.namespace, contentHash);
+    if (existingId) {
+      await this.audit(actor, "memory.duplicate", "memory_item", existingId, input.project, {
+        content_hash: contentHash,
+      });
+      return { id: existingId, accepted: false, warnings: ["duplicate_content"] };
+    }
+
+    // Race-safe path: rely on the partial unique index via ON CONFLICT. The
+    // inference must repeat the index predicate exactly (partial unique index
+    // on tenant/project/namespace/content_hash WHERE content_hash IS NOT NULL
+    // AND deleted_at IS NULL); a bare DO NOTHING would not hit the arbiter.
+    // On conflict the winner row may itself be soft-deleted concurrently, so
+    // retry a bounded number of times before giving up.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const inserted = await this.pool.query(
+        `
+        INSERT INTO memory_items (
+          id, tenant, project, namespace, kind, title, body, summary, metadata, content_hash,
+          source_type, source_ref, agent_id, runtime, workspace, visibility, importance, confidence
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'team', 0, $16)
+        ON CONFLICT (tenant, project, namespace, content_hash)
+          WHERE content_hash IS NOT NULL AND deleted_at IS NULL
+        DO NOTHING
+        RETURNING id
+        `,
+        [
+          randomUUID(),
+          input.tenant,
+          input.project,
+          input.namespace,
+          input.kind,
+          input.title,
+          input.body,
+          input.summary,
+          input.metadata ?? {},
+          contentHash,
+          input.source_type,
+          input.source_ref,
+          actor.agentId,
+          actor.runtime,
+          actor.workspace,
+          input.confidence,
+        ],
+      );
+
+      if (inserted.rows[0]) {
+        const id = inserted.rows[0].id as string;
+        await this.audit(actor, "memory.add", "memory_item", id, input.project, {
+          namespace: input.namespace,
+          kind: input.kind,
+          source_type: input.source_type,
+        });
+        return { id, accepted: true, warnings: [] };
+      }
+
+      // Lost the insert race: report the winner's id as a duplicate.
+      const winnerId = await this.findActiveMemoryId(input.tenant, input.project, input.namespace, contentHash);
+      if (winnerId) {
+        await this.audit(actor, "memory.duplicate", "memory_item", winnerId, input.project, {
+          content_hash: contentHash,
+        });
+        return { id: winnerId, accepted: false, warnings: ["duplicate_content"] };
+      }
+      // Winner was soft-deleted between conflict and lookup; retry the insert.
+    }
+
+    throw new Error("memory_add_conflict_retry_exhausted");
+  }
+
+  private async findActiveMemoryId(
+    tenant: string,
+    project: string,
+    namespace: string,
+    contentHash: string,
+  ): Promise<string | undefined> {
     const existing = await this.pool.query(
       `
       SELECT id
@@ -240,51 +319,9 @@ export class PgStore implements MemoryStore {
       WHERE tenant = $1 AND project = $2 AND namespace = $3 AND content_hash = $4 AND deleted_at IS NULL
       LIMIT 1
       `,
-      [input.tenant, input.project, input.namespace, contentHash],
+      [tenant, project, namespace, contentHash],
     );
-
-    if (existing.rows[0]) {
-      await this.audit(actor, "memory.duplicate", "memory_item", existing.rows[0].id, input.project, {
-        content_hash: contentHash,
-      });
-      return { id: existing.rows[0].id, accepted: false, warnings: ["duplicate_content"] };
-    }
-
-    const id = randomUUID();
-    await this.pool.query(
-      `
-      INSERT INTO memory_items (
-        id, tenant, project, namespace, kind, title, body, summary, metadata, content_hash,
-        source_type, source_ref, agent_id, runtime, workspace, visibility, importance, confidence
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'team', 0, $16)
-      `,
-      [
-        id,
-        input.tenant,
-        input.project,
-        input.namespace,
-        input.kind,
-        input.title,
-        input.body,
-        input.summary,
-        input.metadata ?? {},
-        contentHash,
-        input.source_type,
-        input.source_ref,
-        actor.agentId,
-        actor.runtime,
-        actor.workspace,
-        input.confidence,
-      ],
-    );
-    await this.audit(actor, "memory.add", "memory_item", id, input.project, {
-      namespace: input.namespace,
-      kind: input.kind,
-      source_type: input.source_type,
-    });
-
-    return { id, accepted: true, warnings: [] };
+    return existing.rows[0]?.id as string | undefined;
   }
 
   async contextGet(input: { tenant: string; project: string; keys?: string[] }) {
