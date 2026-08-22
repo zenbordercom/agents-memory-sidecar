@@ -63,8 +63,8 @@ jobs:
             "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_memory_app') THEN CREATE ROLE agent_memory_app LOGIN; END IF; END \$\$"
       - name: Create disposable database for the pg regression suite
         run: |
-          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres \
-            -c "SELECT 'CREATE DATABASE sidecar_pg_test' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'sidecar_pg_test')\gexec"
+          # The service container is fresh per run; tolerate "already exists".
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -c "CREATE DATABASE sidecar_pg_test" || true
           PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d sidecar_pg_test -c "CREATE EXTENSION IF NOT EXISTS vector"
       - run: npm test
         env:
