@@ -1,6 +1,6 @@
 {
   "name": "agents-memory-sidecar",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Local-first shared memory sidecar for MCP-capable AI agents.",
   "engines": {
     "node": ">=22"

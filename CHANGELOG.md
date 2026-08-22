@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 - 2026-08-22
+
+- **Breaking:** token registry files now map SHA-256 hex digests of bearer
+  tokens to actor records; plaintext token keys are rejected at startup with an
+  actionable error. Convert an existing file with
+  `node scripts/migrate-http-tokens.mjs --file <path>` (idempotent; writes a
+  timestamped plaintext backup beside the original) or issue fresh tokens via
+  `scripts/upsert-http-token.mjs`. Token lookup hashes the presented bearer
+  token and compares against stored digests with `crypto.timingSafeEqual` over
+  fixed-length buffers.
+- `memoryAdd`, `contextSet` and `observationAdd` now run each write and its
+  audit insert inside one client-level transaction: audit failures roll the
+  write back, data failures leave no audit gap.
+- The coverage gate now includes `src/pg-store.ts` and `src/db.ts` (lines >=
+  78, functions >= 68) and runs against real PostgreSQL in the CI postgres job
+  and the release workflow; a hermetic variant keeps the previous scope for
+  jobs without PostgreSQL.
+- New real-PostgreSQL regression suite covers concurrent duplicate writes,
+  migration rollback atomicity, advisory-lock serialization, grant replay, and
+  audit-failure rollback on all three write paths.
+
 ## 0.3.3 - 2026-08-22
 
 - Fixed a `memoryAdd` race where concurrent duplicate writes could surface as
