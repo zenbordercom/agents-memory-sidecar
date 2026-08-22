@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.3 - 2026-08-22
+
+- Fixed a `memoryAdd` race where concurrent duplicate writes could surface as
+  HTTP 500 instead of the documented `duplicate_content` contract; inserts now
+  use `ON CONFLICT` against the partial unique index with winner lookup and a
+  `memory.duplicate` audit event.
+- Made migrations atomic and serialized: every migration now runs in one
+  client-level transaction guarded by `pg_advisory_lock`, eliminating the
+  pool-based pseudo-transaction that could half-apply a migration.
+- Unified database and role naming on `agent_memory` / `agent_memory_app`
+  across README, examples, CI, compose bootstrap and docs to match the code
+  defaults used by production deployments; existing databases need no rename.
+- The MCP server now reports its version from package.json instead of a stale
+  hardcoded value.
+- Added a real-PostgreSQL regression suite covering concurrent duplicates,
+  migration rollback atomicity, advisory-lock serialization, and grant replay;
+  it runs in the CI postgres job against a disposable database.
+
 ## 0.3.2 - 2026-08-04
 
 - Updated the MCP SDK and vulnerable transitive dependencies so production and
