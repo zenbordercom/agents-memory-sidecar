@@ -448,6 +448,48 @@ test("pg store correctness regression", { skip: !guarded }, async (t) => {
     assert.equal(row.rows[0].request_id, "req-123");
   });
 
+  await t.test("memoryDelete soft-deletes with audit and frees the content hash", async () => {
+    await resetTables();
+    await migrate();
+    const store = new PgStore(pool);
+    const writer = makeActor("del-writer");
+    const admin = { ...makeActor("del-admin"), role: "admin" as const };
+
+    const base = {
+      tenant: "t-del",
+      project: "p-del",
+      namespace: "ops",
+      kind: "note",
+      body: "sensitive payload that must be removed",
+      source_type: "manual" as const,
+    };
+    const added = await store.memoryAdd(writer, base);
+
+    // Unknown id / cross-tenant no-ops.
+    assert.deepEqual(await store.memoryDelete(admin, { tenant: "t-del", project: "p-del", id: randomUUID() }), { deleted: false });
+    assert.deepEqual(await store.memoryDelete(admin, { tenant: "other", project: "p-del", id: added.id }), { deleted: false });
+
+    assert.deepEqual(await store.memoryDelete(admin, { tenant: "t-del", project: "p-del", id: added.id }), { deleted: true });
+
+    // Invisible to reads and search...
+    assert.equal(await store.memoryGet({ tenant: "t-del", project: "p-del", id: added.id }), undefined);
+    assert.equal((await store.memorySearch({ tenant: "t-del", project: "p-del", query: "sensitive payload", limit: 5 })).length, 0);
+
+    // ...and the partial unique index no longer blocks re-adding the same content.
+    const reAdded = await store.memoryAdd(writer, base);
+    assert.equal(reAdded.accepted, true, "same content must be addable after soft delete");
+    assert.notEqual(reAdded.id, added.id);
+
+    // Second delete of the same row is a no-op (already deleted).
+    assert.deepEqual(await store.memoryDelete(admin, { tenant: "t-del", project: "p-del", id: added.id }), { deleted: false });
+
+    const audits = await pool.query(
+      "SELECT count(*)::int AS n FROM audit_events WHERE action = 'memory.delete' AND target_id = $1",
+      [added.id],
+    );
+    assert.equal(audits.rows[0].n, 1);
+  });
+
   await t.test("audit failure rolls back the write on all three paths", async () => {
     await resetTables();
     await migrate();

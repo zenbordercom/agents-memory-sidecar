@@ -205,5 +205,26 @@ export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServ
     },
   );
 
+  server.registerTool(
+    "memory_delete",
+    {
+      title: "Delete shared memory item",
+      description: "Admin-only soft delete of one memory item. The row is marked deleted and stays auditable.",
+      inputSchema: {
+        tenant,
+        project,
+        id: z.string().uuid(),
+      },
+    },
+    async (input) => {
+      if (!canAdmin(actor, input.tenant, input.project)) {
+        return errorResult("permission_denied");
+      }
+
+      const result = await store.memoryDelete(actor, input);
+      return jsonResult(result);
+    },
+  );
+
   return server;
 }

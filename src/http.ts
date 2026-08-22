@@ -526,6 +526,20 @@ async function handleRequest(
     return item ? send(response, 200, item) : send(response, 404, { error: "not_found" });
   }
 
+  const memoryDeleteMatch = url.pathname.match(/^\/v1\/memory\/([^/]+)$/);
+  if (method === "DELETE" && memoryDeleteMatch) {
+    const tenant = stringOrDefault(url.searchParams.get("tenant"), actor.tenant);
+    const project = requiredString(url.searchParams.get("project"), "project");
+    setLogContext(response, { actor, tenant, project });
+    await authorize(store, response, { actor, tenant, project, role: "admin", operation: "memory.delete", method, path: url.pathname });
+    const id = memoryDeleteMatch[1];
+    if (!isUuid(id)) {
+      setLogContext(response, { error: "invalid_memory_id" });
+      return send(response, 400, { error: "invalid_memory_id" });
+    }
+    return send(response, 200, await store.memoryDelete(actor, { tenant, project, id }));
+  }
+
   if (method === "POST" && url.pathname === "/v1/memory") {
     const input = await readJson(request);
     const tenant = stringOrDefault(input.tenant, actor.tenant);

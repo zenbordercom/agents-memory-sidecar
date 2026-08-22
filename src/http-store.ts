@@ -19,6 +19,13 @@ export class HttpStore implements MemoryStore {
     );
   }
 
+  async memoryDelete(actor: Actor, input: { tenant: string; project: string; id: string }) {
+    return this.request(
+      "DELETE",
+      `/v1/memory/${encodeURIComponent(input.id)}?tenant=${encodeURIComponent(input.tenant)}&project=${encodeURIComponent(input.project)}`,
+    );
+  }
+
   async memoryAdd(
     _actor: Actor,
     input: {

@@ -354,6 +354,42 @@ export class PgStore implements MemoryStore {
     return existing.rows[0]?.id as string | undefined;
   }
 
+  async memoryDelete(actor: Actor, input: { tenant: string; project: string; id: string }) {
+    // Soft delete + audit share one client transaction, matching the write
+    // paths; a no-op (unknown id / already deleted) writes nothing.
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `
+        UPDATE memory_items
+        SET deleted_at = now(), updated_at = now()
+        WHERE id = $1 AND tenant = $2 AND project = $3 AND deleted_at IS NULL
+        RETURNING id
+        `,
+        [input.id, input.tenant, input.project],
+      );
+      if (!result.rows[0]) {
+        await client.query("ROLLBACK");
+        return { deleted: false };
+      }
+      await this.audit(actor, "memory.delete", "memory_item", input.id, input.project, {
+        soft_delete: true,
+      }, client);
+      await client.query("COMMIT");
+      return { deleted: true };
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // Transaction already aborted by the failure.
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async contextGet(input: { tenant: string; project: string; keys?: string[] }) {
     const params: unknown[] = [input.tenant, input.project];
     const filters = ["tenant = $1", "project = $2"];

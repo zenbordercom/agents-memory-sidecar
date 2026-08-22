@@ -27,6 +27,8 @@ export type MemoryStore = {
     source_ref?: string;
     confidence?: number;
   }): Promise<{ id: string; accepted: boolean; warnings: string[] }>;
+  /** Admin-only soft delete: sets deleted_at; the row stays for audit. */
+  memoryDelete(actor: Actor, input: { tenant: string; project: string; id: string }): Promise<{ deleted: boolean }>;
   contextGet(input: { tenant: string; project: string; keys?: string[] }): Promise<ProjectContext[]>;
   contextSet(actor: Actor, input: {
     tenant: string;
@@ -135,6 +137,26 @@ export class FakeStore implements MemoryStore {
         !item.deleted_at &&
         (!item.expires_at || Date.parse(item.expires_at) > now),
     );
+  }
+
+  async memoryDelete(actor: Actor, input: { tenant: string; project: string; id: string }) {
+    await this.load();
+    const item = this.data.memory_items.find(
+      (candidate) =>
+        candidate.id === input.id &&
+        candidate.tenant === input.tenant &&
+        candidate.project === input.project &&
+        !candidate.deleted_at,
+    );
+    if (!item) {
+      return { deleted: false };
+    }
+    item.deleted_at = new Date().toISOString();
+    await this.save();
+    await this.audit(actor, "memory.delete", "memory_item", item.id, input.project, {
+      soft_delete: true,
+    });
+    return { deleted: true };
   }
 
   async memoryAdd(
