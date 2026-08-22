@@ -14,9 +14,16 @@ export function createPgPool(): Pool {
 export async function migrate() {
   const pool = createPgPool();
   const migrationsDir = resolve("migrations");
+  const client = await pool.connect();
 
   try {
-    await pool.query(`
+    // Serialize concurrent migrators: node-pg Pool#query may lease a different
+    // connection per call, so BEGIN/DDL/COMMIT must run on one dedicated
+    // client, and two processes racing `db:migrate` need an advisory lock
+    // around the check-then-insert on schema_migrations.
+    await client.query("SELECT pg_advisory_lock(hashtext('agents_memory_migrate'))");
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         name text PRIMARY KEY,
         applied_at timestamptz NOT NULL DEFAULT now()
@@ -28,24 +35,33 @@ export async function migrate() {
       .sort();
 
     for (const file of files) {
-      const applied = await pool.query("SELECT 1 FROM schema_migrations WHERE name = $1", [file]);
+      const applied = await client.query("SELECT 1 FROM schema_migrations WHERE name = $1", [file]);
       if (applied.rowCount) {
         continue;
       }
 
       const sql = await readFile(join(migrationsDir, file), "utf8");
-      await pool.query("BEGIN");
+      // Each migration runs atomically on this same client: DDL + bookkeeping
+      // commit together or roll back together.
+      await client.query("BEGIN");
       try {
-        await pool.query(sql);
-        await pool.query("INSERT INTO schema_migrations (name) VALUES ($1)", [file]);
-        await pool.query("COMMIT");
+        await client.query(sql);
+        await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [file]);
+        await client.query("COMMIT");
         console.log(`applied ${file}`);
       } catch (error) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         throw error;
       }
     }
   } finally {
-    await pool.end();
+    try {
+      await client.query("SELECT pg_advisory_unlock(hashtext('agents_memory_migrate'))");
+    } catch {
+      // Connection already broken: session teardown releases the lock.
+    } finally {
+      client.release();
+      await pool.end();
+    }
   }
 }
