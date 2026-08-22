@@ -2,17 +2,33 @@ import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { canAdmin, canRead, canWrite } from "./actor.js";
+import {
+  confidenceSchema,
+  embeddingVectorSchema,
+  memoryBodySchema,
+  memorySummarySchema,
+  metadataSchema,
+  namespaceSchema as namespaceBase,
+  observationTextSchema,
+  projectSchema,
+  searchLimitSchema,
+  searchModeSchema,
+  sourceTypeSchema,
+  tenantSchema,
+  ttlDaysSchema,
+} from "./schemas.js";
 import { errorResult, jsonResult } from "./result.js";
 import { scanForSecrets } from "./security.js";
 import type { MemoryStore } from "./store.js";
 import type { Actor } from "./types.js";
 
-const tenant = z.string().min(1).default("default");
-const project = z.string().min(1);
-const namespace = z.string().min(1).default("ops");
-const sourceType = z.enum(["user", "agent", "file", "command", "url", "system", "manual", "import"]);
-const metadata = z.record(z.string(), z.unknown()).default({});
-const searchMode = z.enum(["keyword", "semantic", "hybrid"]);
+// Field constraints come from the shared contract (src/schemas.ts); only the
+// MCP-specific defaults are applied here.
+const tenant = tenantSchema.default("default");
+const project = projectSchema;
+const namespace = namespaceBase.default("ops");
+const metadata = metadataSchema.default({});
+const searchMode = searchModeSchema;
 
 // Single source of truth for the declared version: resolve the package.json that
 // ships with this build (works unchanged from src/ via tsx and from dist/).
@@ -36,10 +52,10 @@ export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServ
         namespace: z.string().min(1).optional(),
         kind: z.string().min(1).optional(),
         query: z.string().min(1),
-        limit: z.number().int().min(1).max(20).default(5),
+        limit: searchLimitSchema.default(5),
         mode: searchMode.optional(),
         embedding_model: z.string().min(1).optional(),
-        query_embedding: z.array(z.number()).min(1).optional(),
+        query_embedding: embeddingVectorSchema.optional(),
       },
     },
     async (input) => {
@@ -108,12 +124,12 @@ export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServ
         namespace,
         kind: z.string().min(1),
         title: z.string().min(1).optional(),
-        body: z.string().min(1).max(64_000),
-        summary: z.string().min(1).max(4_000).optional(),
+        body: memoryBodySchema,
+        summary: memorySummarySchema.optional(),
         metadata,
-        source_type: sourceType,
+        source_type: sourceTypeSchema,
         source_ref: z.string().min(1).optional(),
-        confidence: z.number().min(0).max(1).optional(),
+        confidence: confidenceSchema.optional(),
       },
     },
     async (input) => {
@@ -140,9 +156,9 @@ export function createMemoryMcpServer(actor: Actor, store: MemoryStore): McpServ
         tenant,
         project,
         session_id: z.string().min(1).optional(),
-        observation: z.string().min(1).max(32_000),
+        observation: observationTextSchema,
         metadata,
-        ttl_days: z.number().int().min(1).max(180).default(30),
+        ttl_days: ttlDaysSchema.default(30),
       },
     },
     async (input) => {

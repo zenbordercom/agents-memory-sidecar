@@ -4,6 +4,18 @@ import type { AddressInfo } from "node:net";
 import { URL } from "node:url";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { actorFromEnv, canAdmin, canRead, canWrite } from "./actor.js";
+import {
+  confidenceSchema,
+  embeddingVectorSchema,
+  memoryBodySchema,
+  memorySummarySchema,
+  observationTextSchema,
+  searchLimitSchema,
+  searchModeSchema,
+  sourceTypeSchema,
+  ttlDaysSchema,
+} from "./schemas.js";
+import { z } from "zod";
 import { scanForSecrets } from "./security.js";
 import { createStoreFromEnv } from "./store-factory.js";
 import type { Actor, Role } from "./types.js";
@@ -491,10 +503,10 @@ async function handleRequest(
         query: requiredString(input.query, "query"),
         namespace: optionalString(input.namespace),
         kind: optionalString(input.kind),
-        limit: numberOrDefault(input.limit, 5, 1, 20),
+        limit: parseField(searchLimitSchema, input.limit, { fallback: 5 }),
         mode: searchMode(input.mode),
         embedding_model: optionalString(input.embedding_model),
-        query_embedding: optionalNumberArray(input.query_embedding),
+        query_embedding: optionalField(input.query_embedding, embeddingVectorSchema),
       }),
     });
   }
@@ -541,12 +553,12 @@ async function handleRequest(
         namespace: stringOrDefault(input.namespace, "ops"),
         kind: requiredString(input.kind, "kind"),
         title: optionalString(input.title),
-        body: requiredString(input.body, "body"),
-        summary: optionalString(input.summary),
+        body: parseField(memoryBodySchema, input.body),
+        summary: optionalField(input.summary, memorySummarySchema),
         metadata: objectOrDefault(input.metadata),
-        source_type: sourceType(input.source_type),
+        source_type: parseField(sourceTypeSchema, input.source_type),
         source_ref: optionalString(input.source_ref),
-        confidence: optionalNumber(input.confidence),
+        confidence: optionalField(input.confidence, confidenceSchema),
       }),
     );
   }
@@ -633,9 +645,9 @@ async function handleRequest(
         tenant,
         project,
         session_id: optionalString(input.session_id),
-        observation: requiredString(input.observation, "observation"),
+        observation: parseField(observationTextSchema, input.observation),
         metadata: objectOrDefault(input.metadata),
-        ttl_days: numberOrDefault(input.ttl_days, 30, 1, 180),
+        ttl_days: parseField(ttlDaysSchema, input.ttl_days, { fallback: 30 }),
       }),
     );
   }
@@ -724,6 +736,18 @@ function requiredString(value: unknown, name: string): string {
   return value;
 }
 
+// Validate one field against the shared contract; both entry points must
+// enforce identical rules, so HTTP never hand-rolls a constraint that exists
+// in src/schemas.ts.
+function parseField<T>(schema: z.ZodType<T>, value: unknown, options?: { fallback?: T; errorCode?: string }): T {
+  if (value === undefined && options?.fallback !== undefined) return options.fallback;
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new HttpRequestError(400, options?.errorCode ?? "invalid_request");
+  }
+  return result.data;
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -732,42 +756,21 @@ function stringOrDefault(value: unknown, fallback: string): string {
   return typeof value === "string" && value.length > 0 ? value : fallback;
 }
 
-function optionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" ? value : undefined;
-}
-
-function optionalNumberArray(value: unknown): number[] | undefined {
-  return Array.isArray(value) && value.every((item) => typeof item === "number")
-    ? value
-    : undefined;
+function optionalField<T>(value: unknown, schema: z.ZodType<T>): T | undefined {
+  return value === undefined ? undefined : parseField(schema, value);
 }
 
 function searchMode(value: unknown): "keyword" | "semantic" | "hybrid" | undefined {
-  if (value === undefined) return undefined;
-  if (value === "keyword" || value === "semantic" || value === "hybrid") return value;
-  throw new HttpRequestError(400, "invalid_search_mode");
-}
-
-function numberOrDefault(value: unknown, fallback: number, min: number, max: number): number {
-  const number = typeof value === "number" ? value : fallback;
-  if (!Number.isInteger(number) || number < min || number > max) {
-    throw new HttpRequestError(400, "invalid_request");
-  }
-  return number;
+  // Keep the historical, more specific error code for this field.
+  return value === undefined
+    ? undefined
+    : parseField(searchModeSchema, value, { errorCode: "invalid_search_mode" });
 }
 
 function objectOrDefault(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function sourceType(value: unknown) {
-  const allowed = new Set(["user", "agent", "file", "command", "url", "system", "manual", "import"]);
-  if (typeof value !== "string" || !allowed.has(value)) {
-    throw new HttpRequestError(400, "invalid_request");
-  }
-  return value as any;
 }
 
 function isUuid(value: string): boolean {
