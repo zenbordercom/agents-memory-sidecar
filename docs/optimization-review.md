@@ -48,7 +48,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS memory_items_content_hash_unique
 
 **修复（含审核补强的细节）：**
 
-- 用 `INSERT ... ON CONFLICT (tenant, project, namespace, content_hash) WHERE deleted_at IS NULL DO NOTHING RETURNING id`。注意 partial index 的 `ON CONFLICT` 必须带**与索引谓词一致的 inference + WHERE**，裸 `DO NOTHING` 不能命中。
+- 用 `INSERT ... ON CONFLICT (tenant, project, namespace, content_hash) WHERE content_hash IS NOT NULL AND deleted_at IS NULL DO NOTHING RETURNING id`。注意 partial index 的 `ON CONFLICT` 必须带**与索引谓词一致的 inference + WHERE**，裸 `DO NOTHING` 不能命中。（勘误 2026-08-22：初稿示例误写为 `WHERE deleted_at IS NULL`，inference 谓词不完整会报 `no unique or exclusion constraint matching the ON CONFLICT specification`；正确写法必须复述完整索引谓词。）
 - `DO NOTHING RETURNING` 冲突时返回空集，需回查已有 id 并补 `memory.duplicate` audit，再返回 `{ accepted: false, warnings: ["duplicate_content"] }`。
 - 等价替代：保持现有写法但 `catch (err) { if (err.code === "23505") ... }`，通常更简单。
 - 仅去重不需要包大事务；事务需求见第 4 条。
